@@ -574,7 +574,11 @@ void displayParameter()
 
 void makeDB()
 {
-    posix_memalign((void **)&Table, PAGE_SIZE, (tuple_num) * sizeof(Tuple));
+    int ret = posix_memalign((void **)&Table, PAGE_SIZE, (tuple_num) * sizeof(Tuple));
+    if (ret != 0){
+        perror("posix_memalign");
+        exit(EXIT_FAILURE);
+    }
     for (int i = 0; i < tuple_num; i++)
     {
         Table[i].key = 0;
