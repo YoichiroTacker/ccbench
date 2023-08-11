@@ -6,6 +6,7 @@
 #include <thread>
 #include <vector>
 #include <array>
+#include <cassert>
 #include <xmmintrin.h>
 #include <chrono>
 #include <algorithm>
@@ -324,6 +325,8 @@ public:
         tuple = get_tuple(key);
         Version *ver;
         ver = tuple->latest_.load(memory_order_acquire);
+        assert(ver != nullptr);
+        // TODO It seems that tuple->lock is sometimes taken here, is there any need to wait?
         while (ver->status_.load(memory_order_acquire) != Status::committed || txid_ < ver->cstamp_.load(memory_order_acquire))
         {
             ver = ver->prev_;
@@ -494,6 +497,7 @@ public:
         for (auto itr = write_set_.begin(); itr != write_set_.end(); ++itr)
         {
             Version *next_committed = (*itr).ver_->prev_;
+            assert(next_committed != nullptr);
             while (next_committed->status_.load(memory_order_acquire) != Status::committed)
                 next_committed = next_committed->prev_;
             //    cancel successor mark(sstamp)
