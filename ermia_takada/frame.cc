@@ -164,10 +164,11 @@ void displayParameter()
 
 void makeDB()
 {
-    posix_memalign((void **)&Table, PAGE_SIZE, (tuple_num) * sizeof(Tuple));
+    [[maybe_unused]] auto err = posix_memalign((void **)&Table, PAGE_SIZE, (tuple_num) * sizeof(Tuple));
     for (int i = 0; i < tuple_num; i++)
     {
-        Table[i].key = 0;
+        new (&Table[i]) Tuple();
+        Table[i].key = i;
         Version *verTmp = new Version();
         verTmp->status_.store(Status::committed, memory_order_release);
         verTmp->val_ = 0;
