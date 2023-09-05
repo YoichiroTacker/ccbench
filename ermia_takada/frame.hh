@@ -113,7 +113,9 @@ public:
 
     void w_unlock()
     {
-        counter--;
+        auto expected = counter.load(std::memory_order_relaxed);
+        assert(expected == 1);
+        counter.store(0, std::memory_order_release);
     }
 
     void r_unlock()
@@ -122,6 +124,7 @@ public:
         for (;;)
         {
             expected = counter.load(std::memory_order_acquire);
+            assert(expected <= -1);
             desired = expected + 1;
             if (counter.compare_exchange_strong(expected, desired, std::memory_order_acq_rel, std::memory_order_acquire))
                 break;
@@ -149,7 +152,7 @@ public:
     uint64_t key;
     std::atomic<Version *> latest_;
     std::mutex mt_;
-    bool rlocked;
+    std::atomic<bool> rlocked;
     WRLock mmt_;
 
     Tuple()

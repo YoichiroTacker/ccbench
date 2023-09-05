@@ -95,7 +95,7 @@ void Transaction::twrite(uint64_t key, uint64_t write_val)
         expected = tuple->latest_.load(memory_order_acquire);
         if (!tuple->mmt_.w_try_lock())
         {
-            if (!tuple->rlocked)
+            if (!tuple->rlocked.load())
             {
                 // deadlock prevention for write lock
                 if (this->txid_ > expected->cstamp_.load(memory_order_acquire))
@@ -113,7 +113,7 @@ void Transaction::twrite(uint64_t key, uint64_t write_val)
                 for (auto itr = write_set_.begin(); itr != write_set_.end(); itr++)
                 {
                     Tuple *tmp = (*itr).tuple_;
-                    if (tmp->rlocked)
+                    if (tmp->rlocked.load())
                     {
                         this->status_ = Status::aborted;
                         ++res_->local_rdeadlock_abort_counts_;
@@ -174,7 +174,7 @@ void Transaction::commit()
         for (auto itr = task_set_sorted_.begin(); itr != task_set_sorted_.end(); itr++)
         {
             Tuple *tmptuple = get_tuple(*itr);
-            tmptuple->rlocked = false;
+            tmptuple->rlocked.store(false);
             tmptuple->mmt_.r_unlock();
         }
     }
@@ -221,7 +221,7 @@ void Transaction::abort()
         for (auto itr = task_set_sorted_.begin(); itr != task_set_sorted_.end(); itr++)
         {
             Tuple *tmptuple = get_tuple(*itr);
-            tmptuple->rlocked = true;
+            tmptuple->rlocked.store(true);
             for (;;)
             {
                 if (tmptuple->mmt_.r_try_lock())
