@@ -158,7 +158,7 @@ public:
     Tuple()
     {
         latest_.store(nullptr);
-        rlocked = false;
+        rlocked.store(false);
     }
 };
 

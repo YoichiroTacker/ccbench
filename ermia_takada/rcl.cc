@@ -27,21 +27,24 @@ void Transaction::tread(uint64_t key)
     Tuple *tuple;
     tuple = get_tuple(key);
 
-    Version *expected;
-    for (;;)
+    if (!this->lock_flag)
     {
-        expected = tuple->latest_.load(memory_order_acquire);
-        if (!tuple->mmt_.r_try_lock())
+        Version *expected;
+        for (;;)
         {
-            if (this->txid_ > expected->cstamp_.load(memory_order_acquire))
+            expected = tuple->latest_.load(memory_order_acquire);
+            if (!tuple->mmt_.r_try_lock())
             {
-                this->status_ = Status::aborted;
-                ++res_->local_wwconflict_counts_;
-                goto FINISH_TREAD;
+                if (this->txid_ >= expected->cstamp_.load(memory_order_acquire))
+                {
+                    this->status_ = Status::aborted;
+                    ++res_->local_wwconflict_counts_;
+                    goto FINISH_TREAD;
+                }
             }
+            else
+                break;
         }
-        else
-            break;
     }
 
     Version *ver;
@@ -54,7 +57,8 @@ void Transaction::tread(uint64_t key)
 
     ssn_tread(ver, key);
 
-    tuple->mmt_.r_unlock(); // short duration?
+    if (!this->lock_flag)
+        tuple->mmt_.r_unlock(); // short duration?
 
     if (this->status_ == Status::aborted)
     {
@@ -95,19 +99,16 @@ void Transaction::twrite(uint64_t key, uint64_t write_val)
         expected = tuple->latest_.load(memory_order_acquire);
         if (!tuple->mmt_.w_try_lock())
         {
-            if (!tuple->rlocked.load())
+            //  deadlock prevention for write lock
+            if (this->txid_ > expected->cstamp_.load(memory_order_acquire))
             {
-                // deadlock prevention for write lock
-                if (this->txid_ > expected->cstamp_.load(memory_order_acquire))
-                {
-                    this->status_ = Status::aborted;
-                    ++res_->local_wdeadlock_abort_counts_;
-                    goto FINISH_TWRITE;
-                }
+                this->status_ = Status::aborted;
+                ++res_->local_wdeadlock_abort_counts_;
+                goto FINISH_TWRITE;
             }
             //----------------------------------------------------------------
             // deadlock prevention for r-only lock
-            else
+            if (tuple->rlocked.load())
             {
                 desired->locked_flag_ = true;
                 for (auto itr = write_set_.begin(); itr != write_set_.end(); itr++)
