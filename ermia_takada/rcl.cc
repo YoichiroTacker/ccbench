@@ -108,13 +108,13 @@ void Transaction::twrite(uint64_t key, uint64_t write_val)
             }
             //----------------------------------------------------------------
             // deadlock prevention for r-only lock
-            if (tuple->rlocked.load())
+            if (tuple->rlocked.load() > 0)
             {
                 desired->locked_flag_ = true;
                 for (auto itr = write_set_.begin(); itr != write_set_.end(); itr++)
                 {
                     Tuple *tmp = (*itr).tuple_;
-                    if (tmp->rlocked.load())
+                    if (tmp->rlocked.load() > 0)
                     {
                         this->status_ = Status::aborted;
                         ++res_->local_rdeadlock_abort_counts_;
@@ -175,7 +175,7 @@ void Transaction::commit()
         for (auto itr = task_set_sorted_.begin(); itr != task_set_sorted_.end(); itr++)
         {
             Tuple *tmptuple = get_tuple(*itr);
-            tmptuple->rlocked.store(false);
+            tmptuple->rlocked.fetch_add(-1);
             tmptuple->mmt_.r_unlock();
         }
     }
@@ -222,7 +222,7 @@ void Transaction::abort()
         for (auto itr = task_set_sorted_.begin(); itr != task_set_sorted_.end(); itr++)
         {
             Tuple *tmptuple = get_tuple(*itr);
-            tmptuple->rlocked.store(true);
+            tmptuple->rlocked.fetch_add(1);
             for (;;)
             {
                 if (tmptuple->mmt_.r_try_lock())
