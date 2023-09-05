@@ -171,13 +171,14 @@ void Transaction::commit()
     // readonlylock unlock
     if (this->lock_flag == true)
     {
-        this->lock_flag = false;
         for (auto itr = task_set_sorted_.begin(); itr != task_set_sorted_.end(); itr++)
         {
             Tuple *tmptuple = get_tuple(*itr);
             tmptuple->rlocked.fetch_add(-1);
             tmptuple->mmt_.r_unlock();
         }
+        this->lock_flag = false;
+        task_set_sorted_.clear();
     }
     read_set_.clear();
     write_set_.clear();
@@ -213,6 +214,7 @@ void Transaction::abort()
     if (USE_LOCK == 1 && isreadonly() == true)
     {
         // sorting
+        assert(task_set_sorted_.empty());
         for (int i = 0; i < task_set_.size(); i++)
             task_set_sorted_.push_back(task_set_.at(i).key_);
         std::sort(task_set_sorted_.begin(), task_set_sorted_.end());
