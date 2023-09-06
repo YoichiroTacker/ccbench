@@ -27,7 +27,7 @@ void Transaction::tread(uint64_t key)
     Tuple *tuple;
     tuple = get_tuple(key);
 
-    if (!this->lock_flag)
+    /*if (!this->lock_flag)
     {
         Version *expected;
         for (;;)
@@ -45,7 +45,7 @@ void Transaction::tread(uint64_t key)
             else
                 break;
         }
-    }
+    }*/
 
     Version *ver;
     ver = tuple->latest_.load(memory_order_acquire);
@@ -57,8 +57,8 @@ void Transaction::tread(uint64_t key)
 
     ssn_tread(ver, key);
 
-    if (!this->lock_flag)
-        tuple->mmt_.r_unlock(); // short duration?
+    // if (!this->lock_flag)
+    //   tuple->mmt_.r_unlock(); // short duration?
 
     if (this->status_ == Status::aborted)
     {
@@ -109,19 +109,19 @@ void Transaction::twrite(uint64_t key, uint64_t write_val)
             //----------------------------------------------------------------
             // deadlock prevention for r-only lock
             if (tuple->rlocked.load() > 0)
-            {
                 desired->locked_flag_ = true;
-                for (auto itr = write_set_.begin(); itr != write_set_.end(); itr++)
+
+            for (auto itr = write_set_.begin(); itr != write_set_.end(); itr++)
+            {
+                Tuple *tmp = (*itr).tuple_;
+                if (tmp->rlocked.load() > 0)
                 {
-                    Tuple *tmp = (*itr).tuple_;
-                    if (tmp->rlocked.load() > 0)
-                    {
-                        this->status_ = Status::aborted;
-                        ++res_->local_rdeadlock_abort_counts_;
-                        goto FINISH_TWRITE;
-                    }
+                    this->status_ = Status::aborted;
+                    ++res_->local_rdeadlock_abort_counts_;
+                    goto FINISH_TWRITE;
                 }
             }
+            //}
             //----------------------------------------------------------------
         }
         else
@@ -174,7 +174,7 @@ void Transaction::commit()
         for (auto itr = task_set_sorted_.begin(); itr != task_set_sorted_.end(); itr++)
         {
             Tuple *tmptuple = get_tuple(*itr);
-            tmptuple->rlocked.fetch_add(-1);
+            tmptuple->rlocked.fetch_sub(1);
             tmptuple->mmt_.r_unlock();
         }
         this->lock_flag = false;
