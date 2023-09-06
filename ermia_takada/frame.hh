@@ -152,13 +152,13 @@ public:
     uint64_t key;
     std::atomic<Version *> latest_;
     std::mutex mt_;
-    std::atomic<bool> rlocked;
+    std::atomic<size_t> rlocked;
     WRLock mmt_;
 
     Tuple()
     {
         latest_.store(nullptr);
-        rlocked = false;
+        rlocked.store(0);
     }
 };
 
