@@ -33,7 +33,7 @@ void Transaction::ssn_twrite(Version *desired, uint64_t key)
     if (desired->locked_flag_)
         this->pstamp_ = max(this->pstamp_, desired->prev_->pstamp_for_rlock_.load(memory_order_acquire));
     else
-        //  Update eta with w:r edge
+        //   Update eta with w:r edge
         this->pstamp_ = max(this->pstamp_, desired->prev_->pstamp_.load(memory_order_acquire));
 
     //   t.writes.add(V)

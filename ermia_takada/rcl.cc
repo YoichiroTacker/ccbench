@@ -27,7 +27,7 @@ void Transaction::tread(uint64_t key)
     Tuple *tuple;
     tuple = get_tuple(key);
 
-    /*if (!this->lock_flag)
+    if (!this->lock_flag)
     {
         Version *expected;
         for (;;)
@@ -38,14 +38,25 @@ void Transaction::tread(uint64_t key)
                 if (this->txid_ >= expected->cstamp_.load(memory_order_acquire))
                 {
                     this->status_ = Status::aborted;
-                    ++res_->local_wwconflict_counts_;
+                    ++res_->local_rdeadlock_abort_counts_;
                     goto FINISH_TREAD;
+                }
+                // rdeadlock prevention
+                for (auto itr = write_set_.begin(); itr != write_set_.end(); itr++)
+                {
+                    Tuple *tmp = (*itr).tuple_;
+                    if (tmp->rlocked.load() > 0)
+                    {
+                        this->status_ = Status::aborted;
+                        ++res_->local_rdeadlock_abort_counts_;
+                        goto FINISH_TREAD;
+                    }
                 }
             }
             else
                 break;
         }
-    }*/
+    }
 
     Version *ver;
     ver = tuple->latest_.load(memory_order_acquire);
@@ -57,8 +68,8 @@ void Transaction::tread(uint64_t key)
 
     ssn_tread(ver, key);
 
-    // if (!this->lock_flag)
-    //   tuple->mmt_.r_unlock(); // short duration?
+    if (!this->lock_flag)
+        tuple->mmt_.r_unlock(); // short duration?
 
     if (this->status_ == Status::aborted)
     {

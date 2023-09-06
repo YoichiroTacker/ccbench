@@ -50,6 +50,6 @@ add_definitions(-Dmax_ope_readonly=100)  #Total number of operations per read on
 add_definitions(-Dronly_ratio=40)        #read-only transaction rate
 add_definitions(-Drratio=40)            #read ratio of single transaction
 add_definitions(-Dthread_num=4)        #Total number of records
-add_definitions(-Dtuple_num=10000)       #Total number of records
+add_definitions(-Dtuple_num=1000000)       #Total number of records
 add_definitions(-Dskew=0.99)               #skew(0~0.99)
-add_definitions(-DUSE_LOCK=0)           #read-only lock flag "0 = dont use, 1 = use"
+add_definitions(-DUSE_LOCK=1)           #read-only lock flag "0 = dont use, 1 = use"

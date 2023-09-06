@@ -17,7 +17,7 @@ set(CMAKE_TARGET_DEFINITIONS_CXX
   "CACHE_LINE_SIZE=64"
   "PAGE_SIZE=4096"
   "TIDFLAG=1"
-  "USE_LOCK=0"
+  "USE_LOCK=1"
   "clocks_per_us=2100"
   "extime=3"
   "max_ope=20"
@@ -26,7 +26,7 @@ set(CMAKE_TARGET_DEFINITIONS_CXX
   "rratio=40"
   "skew=0.99"
   "thread_num=4"
-  "tuple_num=10000"
+  "tuple_num=1000000"
   )
 
 # The include file search paths:
