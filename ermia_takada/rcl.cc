@@ -130,8 +130,6 @@ void Transaction::twrite(uint64_t key, uint64_t write_val)
                 Tuple *tmp = (*itr).tuple_;
                 if (tmp->rlocked.load() > 0)
                 {
-                    // if (desired->locked_flag_ == true)
-                    //   cout << "mazui " << endl;
                     this->status_ = Status::aborted;
                     ++res_->local_rdeadlock_abort_counts_;
                     goto FINISH_TWRITE;
