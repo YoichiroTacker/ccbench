@@ -23,7 +23,8 @@ void Transaction::ssn_tread(Version *ver, uint64_t key)
     else
         // update pi with r:w edge
         this->sstamp_ = min(this->sstamp_, ver->sstamp_.load(memory_order_acquire));
-    verify_exclusion_or_abort();
+    if (USE_LOCK == 0)
+        verify_exclusion_or_abort();
 }
 
 void Transaction::ssn_twrite(Version *desired, uint64_t key)
@@ -33,7 +34,7 @@ void Transaction::ssn_twrite(Version *desired, uint64_t key)
     if (desired->locked_flag_)
         this->pstamp_ = max(this->pstamp_, desired->prev_->pstamp_for_rlock_.load(memory_order_acquire));
     else
-        //   Update eta with w:r edge
+        //    Update eta with w:r edge
         this->pstamp_ = max(this->pstamp_, desired->prev_->pstamp_.load(memory_order_acquire));
 
     //   t.writes.add(V)
@@ -60,14 +61,15 @@ void Transaction::ssn_commit()
         this->sstamp_ = min(this->sstamp_, (*itr).ver_->sstamp_.load(memory_order_acquire));
     }
 
-    // finalize eta(T)
-    for (auto itr = write_set_.begin(); itr != write_set_.end(); ++itr)
+    // rclの場合、write lockをとっているのでw-w/w-rともに発生しない
+    //  finalize eta(T)
+    /*for (auto itr = write_set_.begin(); itr != write_set_.end(); ++itr)
     {
         if ((*itr).ver_->locked_flag_)
             this->pstamp_ = max(this->pstamp_, (*itr).ver_->prev_->pstamp_for_rlock_.load(memory_order_acquire));
         else
             this->pstamp_ = max(this->pstamp_, (*itr).ver_->prev_->pstamp_.load(memory_order_acquire));
-    }
+    }*/
 
     // ssn_check_exclusion
     if (pstamp_ < sstamp_)
@@ -85,7 +87,8 @@ void Transaction::ssn_commit()
         (*itr).ver_->pstamp_.store((max((*itr).ver_->pstamp_.load(memory_order_acquire), this->cstamp_)), memory_order_release);
         // 提案手法部分
         if (this->lock_flag)
-            (*itr).ver_->pstamp_for_rlock_.store(max((*itr).ver_->pstamp_.load(memory_order_acquire), this->pstamp_));
+            //(*itr).ver_->pstamp_for_rlock_.store(max((*itr).ver_->pstamp_.load(memory_order_acquire), this->pstamp_));
+            (*itr).ver_->pstamp_for_rlock_.store(this->pstamp_);
     }
 
     // update pi

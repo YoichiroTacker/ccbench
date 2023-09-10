@@ -7,13 +7,16 @@ extern std::mutex SsnLock;
 
 void print_mode()
 {
-    cout << "this result is executed by RCL+SSN" << endl;
+    if (USE_LOCK == 0)
+        cout << "this result is executed by RCL+SSN" << endl;
+    else if (USE_LOCK == 1)
+        cout << "this result is executed by RCL+SSN+Robust Safe Retry" << endl;
 }
 
 void Transaction::tbegin()
 {
-    // if (this->lock_flag == false)
-    this->txid_ = atomic_fetch_add(&timestampcounter, 1);
+    if (!this->lock_flag)
+        this->txid_ = atomic_fetch_add(&timestampcounter, 1);
     ssn_tbegin();
 }
 
@@ -127,6 +130,8 @@ void Transaction::twrite(uint64_t key, uint64_t write_val)
                 Tuple *tmp = (*itr).tuple_;
                 if (tmp->rlocked.load() > 0)
                 {
+                    // if (desired->locked_flag_ == true)
+                    //   cout << "mazui " << endl;
                     this->status_ = Status::aborted;
                     ++res_->local_rdeadlock_abort_counts_;
                     goto FINISH_TWRITE;
@@ -241,7 +246,9 @@ void Transaction::abort()
                 if (tmptuple->mmt_.r_try_lock())
                     break;
             }
-            // this->txid_ = this->cstamp_;
+            // 最適化
+            // if (!lyaborted)
+            this->txid_ = this->cstamp_;
         }
         this->lock_flag = true;
     }
