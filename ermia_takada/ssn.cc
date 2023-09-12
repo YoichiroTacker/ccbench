@@ -23,7 +23,7 @@ void Transaction::ssn_tread(Version *ver, uint64_t key)
     else
         // update pi with r:w edge
         this->sstamp_ = min(this->sstamp_, ver->sstamp_.load(memory_order_acquire));
-    if (USE_LOCK == 0)
+    if (USE_LOCK == 0 || !this->lock_flag)
         verify_exclusion_or_abort();
 }
 
