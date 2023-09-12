@@ -90,11 +90,16 @@ void makeTask(std::vector<Task> &tasks, Xoroshiro128Plus &rnd, FastZipf &zipf)
     tasks.clear();
     if ((rnd.next() % 100) < ronly_ratio)
     {
+        std::set<uint64_t> keys;
         for (size_t i = 0; i < max_ope_readonly; ++i)
         {
-            uint64_t tmpkey;
+            uint64_t tmpkey = zipf() % tuple_num;
             // decide access destination key.
-            tmpkey = zipf() % tuple_num;
+            while (keys.find(tmpkey) != keys.end())
+            {
+                tmpkey = zipf() % tuple_num;
+            }
+            keys.insert(tmpkey);
             tasks.emplace_back(Ope::READ, tmpkey);
         }
     }
