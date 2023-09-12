@@ -11,6 +11,7 @@
 #include <xmmintrin.h>
 #include <chrono>
 #include <algorithm>
+#include <set>
 
 #include "../include/zipf.hh"
 
