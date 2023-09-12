@@ -44,4 +44,6 @@ CTestTestfile.cmake
 _deps
 
 # buildディレクトリ以下は無視
-#build/
+build/
+.vscode/
+.devcontainer/
