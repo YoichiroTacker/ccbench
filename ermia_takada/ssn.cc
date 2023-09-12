@@ -61,15 +61,14 @@ void Transaction::ssn_commit()
         this->sstamp_ = min(this->sstamp_, (*itr).ver_->sstamp_.load(memory_order_acquire));
     }
 
-    // rclの場合、write lockをとっているのでw-w/w-rともに発生しない
     //  finalize eta(T)
-    /*for (auto itr = write_set_.begin(); itr != write_set_.end(); ++itr)
+    for (auto itr = write_set_.begin(); itr != write_set_.end(); ++itr)
     {
         if ((*itr).ver_->locked_flag_)
             this->pstamp_ = max(this->pstamp_, (*itr).ver_->prev_->pstamp_for_rlock_.load(memory_order_acquire));
         else
             this->pstamp_ = max(this->pstamp_, (*itr).ver_->prev_->pstamp_.load(memory_order_acquire));
-    }*/
+    }
 
     // ssn_check_exclusion
     if (pstamp_ < sstamp_)
