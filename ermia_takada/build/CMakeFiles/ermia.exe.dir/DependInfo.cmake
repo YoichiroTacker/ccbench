@@ -26,7 +26,7 @@ set(CMAKE_TARGET_DEFINITIONS_CXX
   "rratio=40"
   "skew=0.99"
   "thread_num=4"
-  "tuple_num=1000000"
+  "tuple_num=10000"
   )
 
 # The include file search paths:
