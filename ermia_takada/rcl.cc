@@ -15,8 +15,8 @@ void print_mode()
 
 void Transaction::tbegin()
 {
-    if (!this->lock_flag)
-        this->txid_ = atomic_fetch_add(&timestampcounter, 1);
+    // if (!this->lock_flag)
+    this->txid_ = atomic_fetch_add(&timestampcounter, 1);
     ssn_tbegin();
 }
 
@@ -245,8 +245,7 @@ void Transaction::abort()
                     break;
             }
             // 最適化
-            // if (!lyaborted)
-            this->txid_ = this->cstamp_;
+            // this->txid_ = this->cstamp_;
         }
         this->lock_flag = true;
     }
