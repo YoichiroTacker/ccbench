@@ -216,6 +216,7 @@ void worker(size_t thid, char &ready, const bool &start, const bool &quit)
         for (auto itr = trans.task_set_.begin(); itr != trans.task_set_.end();
              ++itr)
         {
+            cout << "ww" << endl;
             if ((*itr).ope_ == Ope::READ)
             {
                 trans.tread((*itr).key_);
