@@ -20,16 +20,6 @@ void Transaction::ssn_tread(Version *ver, uint64_t key)
     if (ver->sstamp_.load(memory_order_acquire) == (UINT32_MAX))
     {
         //// no overwrite yet
-        /*Operation *tmpset;
-        tmpset->key_ = key;
-        tmpset->ver_ = ver;
-        for (int i = 0; i < 60; i++)
-        {
-            tmpset->value_[i] = ver->val_[i];
-        }
-        read_set_.push_back(*tmpset);*/
-
-        // read_set_.emplace_back(key, ver, ver->val_);
         read_set_.emplace_back(key, ver, ver->val_);
     }
     else
