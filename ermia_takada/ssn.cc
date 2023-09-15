@@ -18,13 +18,27 @@ void Transaction::ssn_tread(Version *ver, uint64_t key)
     this->pstamp_ = max(this->pstamp_, ver->cstamp_.load(memory_order_acquire));
 
     if (ver->sstamp_.load(memory_order_acquire) == (UINT32_MAX))
+    {
         //// no overwrite yet
+        /*Operation *tmpset;
+        tmpset->key_ = key;
+        tmpset->ver_ = ver;
+        for (int i = 0; i < 60; i++)
+        {
+            tmpset->value_[i] = ver->val_[i];
+        }
+        read_set_.push_back(*tmpset);*/
+
+        // read_set_.emplace_back(key, ver, ver->val_);
         read_set_.emplace_back(key, ver, ver->val_);
+    }
     else
+    {
         // update pi with r:w edge
         this->sstamp_ = min(this->sstamp_, ver->sstamp_.load(memory_order_acquire));
-    // if (USE_LOCK == 0 || (USE_LOCK == 1 && !isreadonly()))
-    verify_exclusion_or_abort();
+        // if (USE_LOCK == 0 || (USE_LOCK == 1 && !isreadonly()))
+        verify_exclusion_or_abort();
+    }
 }
 
 void Transaction::ssn_twrite(Version *desired, uint64_t key)
@@ -34,7 +48,7 @@ void Transaction::ssn_twrite(Version *desired, uint64_t key)
     if (desired->locked_flag_)
         this->pstamp_ = max(this->pstamp_, desired->prev_->pstamp_for_rlock_.load(memory_order_acquire));
     else
-        //    Update eta with w:r edge
+        //     Update eta with w:r edge
         this->pstamp_ = max(this->pstamp_, desired->prev_->pstamp_.load(memory_order_acquire));
 
     //   t.writes.add(V)

@@ -83,7 +83,7 @@ FINISH_TREAD:
     return;
 }
 
-void Transaction::twrite(uint64_t key, uint64_t write_val)
+void Transaction::twrite(uint64_t key, std::array<int, DATA_SIZE> write_val)
 {
     // update local write set
     if (searchWriteSet(key) == true)
@@ -96,7 +96,10 @@ void Transaction::twrite(uint64_t key, uint64_t write_val)
     Version *expected, *desired;
     desired = new Version();
     desired->cstamp_.store(this->txid_, memory_order_release);
-    desired->val_ = write_val;
+    for (int i = 0; i < DATA_SIZE; i++)
+    {
+        desired->val_[i] = write_val[i];
+    }
 
     //----------------------------------------------------------------
     // deadlock prevention(no-wait)

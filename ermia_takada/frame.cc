@@ -117,7 +117,10 @@ void makeTask(std::vector<Task> &tasks, Xoroshiro128Plus &rnd, FastZipf &zipf)
             }
             else
             {
-                tasks.emplace_back(Ope::WRITE, tmpkey, zipf());
+                std::array<int, DATA_SIZE> tmparray;
+                for (int i = 0; i < DATA_SIZE; i++)
+                    tmparray[i] = zipf();
+                tasks.emplace_back(Ope::WRITE, tmpkey, tmparray);
             }
         }
     }
@@ -176,7 +179,11 @@ void makeDB()
         Table[i].key = i;
         Version *verTmp = new Version();
         verTmp->status_.store(Status::committed, memory_order_release);
-        verTmp->val_ = 0;
+        // verTmp->val_= 0;
+        for (int i = 0; i < DATA_SIZE; i++)
+        {
+            verTmp->val_[i] = 0;
+        }
         Table[i].latest_.store(verTmp, memory_order_release);
     }
 }
@@ -215,6 +222,7 @@ void worker(size_t thid, char &ready, const bool &start, const bool &quit)
             }
             else if ((*itr).ope_ == Ope::WRITE)
             {
+                // trans.twrite((*itr).key_, (*itr).write_val_);
                 trans.twrite((*itr).key_, (*itr).write_val_);
             }
             // early abort.
@@ -237,6 +245,51 @@ void worker(size_t thid, char &ready, const bool &start, const bool &quit)
         }
     }
     return;
+}
+
+void displayDB()
+{
+    Tuple *tuple;
+    Version *version;
+
+    for (int i = 0; i < tuple_num; ++i)
+    {
+        // for (auto itr = Table->begin(); itr != Table->end(); itr++) {
+        tuple = &Table[i];
+        cout << "------------------------------" << endl; // - 30
+        cout << "key: " << i << endl;
+
+        // version = tuple->latest_;
+        version = tuple->latest_;
+
+        while (version != NULL)
+        {
+            cout << "val: ";
+            for (int i = 0; i < DATA_SIZE; i++)
+                cout << version->val_[i] << " ";
+
+            switch (version->status_)
+            {
+            case Status::inFlight:
+                cout << " status:  inFlight/";
+                break;
+            case Status::aborted:
+                cout << " status:  aborted/";
+                break;
+            case Status::committed:
+                cout << " status:  committed/";
+                break;
+            }
+            // cout << endl;
+
+            cout << " /cstamp:  " << version->cstamp_;
+            cout << " /pstamp:  " << version->pstamp_;
+            cout << " /sstamp:  " << version->sstamp_ << endl;
+            // cout << endl;
+
+            version = version->prev_;
+        }
+    }
 }
 
 int main(int argc, char *argv[])
@@ -283,6 +336,8 @@ int main(int argc, char *argv[])
     cout << "latency[ns]:\t\t\t" << powl(10.0, 9.0) / result * thread_num
          << endl;
     cout << "throughput[tps]:\t\t" << result << endl;
+
+    // displayDB();
 
     std::quick_exit(0);
 

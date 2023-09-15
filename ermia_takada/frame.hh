@@ -12,6 +12,7 @@
 #include <chrono>
 #include <algorithm>
 #include <set>
+#include <new>
 
 #include "../include/zipf.hh"
 
@@ -59,11 +60,11 @@ enum class Status : uint8_t
 class Version
 {
 public:
-    Version *prev_; // Pointer to overwritten version
-    uint64_t val_;
-    std::atomic<uint32_t> pstamp_; // Version access stamp, eta(V)
-    std::atomic<uint32_t> sstamp_; // Version successor stamp, pi(V)
-    std::atomic<uint32_t> cstamp_; // Version creation stamp, c(V)
+    Version *prev_;                  // Pointer to overwritten version
+    std::array<int, DATA_SIZE> val_; // value
+    std::atomic<uint32_t> pstamp_;   // Version access stamp, eta(V)
+    std::atomic<uint32_t> sstamp_;   // Version successor stamp, pi(V)
+    std::atomic<uint32_t> cstamp_;   // Version creation stamp, c(V)
     std::atomic<Status> status_;
     std::atomic<uint32_t> pstamp_for_rlock_; // 提案手法用, eta
     bool locked_flag_;                       // rlockによって待たされたupdate transaction
@@ -173,13 +174,13 @@ class Operation
 {
 public:
     uint64_t key_;
-    uint64_t value_; // read value
     Version *ver_;
     Tuple *tuple_; // for lock
+    std::array<int, DATA_SIZE> value_;
 
-    Operation(uint64_t key, Version *ver, uint64_t value) : key_(key), ver_(ver), value_(value) {}
     Operation(uint64_t key, Version *ver, Tuple *tuple) : key_(key), ver_(ver), tuple_(tuple) {}
     Operation(uint64_t key, Version *ver) : key_(key), ver_(ver) {}
+    Operation(uint64_t key, Version *ver, std::array<int, DATA_SIZE> value) : key_(key), ver_(ver), value_(value) {}
 };
 
 class Task
@@ -187,10 +188,10 @@ class Task
 public:
     Ope ope_;
     uint64_t key_;
-    uint64_t write_val_;
+    std::array<int, DATA_SIZE> write_val_;
 
     Task(Ope ope, uint64_t key) : ope_(ope), key_(key) {}
-    Task(Ope ope, uint64_t key, uint64_t write_val) : ope_(ope), key_(key), write_val_(write_val) {}
+    Task(Ope ope, uint64_t key, std::array<int, DATA_SIZE> write_val) : ope_(ope), key_(key), write_val_(write_val) {}
 };
 
 class Transaction
@@ -236,7 +237,7 @@ public:
 
     void ssn_twrite(Version *desired, uint64_t key);
 
-    void twrite(uint64_t key, uint64_t write_val);
+    void twrite(uint64_t key, std::array<int, DATA_SIZE> write_val);
 
     void ssn_commit();
 

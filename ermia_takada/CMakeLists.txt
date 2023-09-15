@@ -43,13 +43,14 @@ target_link_libraries(ermia.exe
 add_definitions(-DTIDFLAG=1)
 add_definitions(-DCACHE_LINE_SIZE=64)
 add_definitions(-DPAGE_SIZE=4096)
-add_definitions(-Dclocks_per_us=2100)   #CPU_MHz. Use this info for measuring time
-add_definitions(-Dextime=3)             #Execution time[sec]
-add_definitions(-Dmax_ope=20)           #Total number of operations per single transaction
-add_definitions(-Dmax_ope_readonly=100)  #Total number of operations per read only transaction
-add_definitions(-Dronly_ratio=40)        #read-only transaction rate
-add_definitions(-Drratio=40)            #read ratio of single transaction
-add_definitions(-Dthread_num=4)        #Total number of records
-add_definitions(-Dtuple_num=10000)       #Total number of records
-add_definitions(-Dskew=0.99)               #skew(0~0.99)
-add_definitions(-DUSE_LOCK=1)           #read-only lock flag "0 = dont use, 1 = use"
+add_definitions(-Dclocks_per_us=2100)           #CPU_MHz. Use this info for measuring time
+add_definitions(-Dextime=30)                     #Execution time[sec]
+add_definitions(-Dmax_ope=2)                   #Total number of operations per single transaction
+add_definitions(-Dmax_ope_readonly=1000)       #Total number of operations per read only transaction
+add_definitions(-Dronly_ratio=40)               #read-only transaction rate
+add_definitions(-Drratio=10)                    #read ratio of single transaction
+add_definitions(-Dthread_num=10)                 #Total number of records
+add_definitions(-Dtuple_num=10000)              #Total number of records
+add_definitions(-Dskew=0)                     #skew(0~0.99)
+add_definitions(-DUSE_LOCK=1)                   #read-only lock flag "0 = dont use, 1 = use"
+add_definitions(-DDATA_SIZE=200)                #int(4byte)* DATA_SIZE= Data byte
