@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <set>
 #include <new>
+#include <cstdint>
 
 #include "../include/zipf.hh"
 

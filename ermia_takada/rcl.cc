@@ -32,6 +32,15 @@ void Transaction::tread(uint64_t key)
 
     if (!this->lock_flag)
     {
+        //----------------------------------------------------------------
+        // deadlock prevention(no-wait)
+        /*if (!tuple->mmt_.r_try_lock())
+        {
+            this->status_ = Status::aborted;
+            ++res_->local_wwconflict_counts_;
+            goto FINISH_TREAD;
+        }*/
+        //----------------------------------------------------------------
         Version *expected;
         for (;;)
         {
@@ -59,11 +68,12 @@ void Transaction::tread(uint64_t key)
             else
                 break;
         }
+        //----------------------------------------------------------------
     }
 
     Version *ver;
     ver = tuple->latest_.load(memory_order_acquire);
-    while (ver->status_.load(memory_order_acquire) != Status::committed || txid_ < ver->cstamp_.load(memory_order_acquire))
+    while (ver->status_.load(memory_order_acquire) != Status::committed) // || txid_ < ver->cstamp_.load(memory_order_acquire))
     {
         ver = ver->prev_;
         ++res_->local_traversal_counts_;
@@ -103,7 +113,8 @@ void Transaction::twrite(uint64_t key, std::array<int, DATA_SIZE> write_val)
 
     //----------------------------------------------------------------
     // deadlock prevention(no-wait)
-    /*if (!tuple->mmt_.w_try_lock())
+    /*expected = tuple->latest_.load(memory_order_acquire);
+    if (!tuple->mmt_.w_try_lock())
     {
         this->status_ = Status::aborted;
         ++res_->local_wwconflict_counts_;
@@ -114,6 +125,23 @@ void Transaction::twrite(uint64_t key, std::array<int, DATA_SIZE> write_val)
     for (;;)
     {
         expected = tuple->latest_.load(memory_order_acquire);
+        if (tuple->rlocked.load() > 0)
+        {
+            // desired->locked_flag_ = true;
+            this->status_ = Status::aborted;
+            ++res_->local_rdeadlock_abort_counts_;
+            goto FINISH_TWRITE;
+        }
+        for (auto itr = write_set_.begin(); itr != write_set_.end(); itr++)
+        {
+            Tuple *tmp = (*itr).tuple_;
+            if (tmp->rlocked.load() > 0)
+            {
+                this->status_ = Status::aborted;
+                ++res_->local_rdeadlock_abort_counts_;
+                goto FINISH_TWRITE;
+            }
+        }
         if (!tuple->mmt_.w_try_lock())
         {
             //  deadlock prevention for write lock
@@ -126,7 +154,12 @@ void Transaction::twrite(uint64_t key, std::array<int, DATA_SIZE> write_val)
             //----------------------------------------------------------------
             // deadlock prevention for r-only lock
             if (tuple->rlocked.load() > 0)
-                desired->locked_flag_ = true;
+            {
+                // desired->locked_flag_ = true;
+                this->status_ = Status::aborted;
+                ++res_->local_rdeadlock_abort_counts_;
+                goto FINISH_TWRITE;
+            }
 
             for (auto itr = write_set_.begin(); itr != write_set_.end(); itr++)
             {
@@ -138,7 +171,6 @@ void Transaction::twrite(uint64_t key, std::array<int, DATA_SIZE> write_val)
                     goto FINISH_TWRITE;
                 }
             }
-            //}
             //----------------------------------------------------------------
         }
         else
@@ -179,11 +211,16 @@ void Transaction::commit()
     }
     else
     {
+        // abort or inflight
         if (this->status_ == Status::inFlight)
             cout << "commit error" << endl;
         SsnLock.unlock();
         return;
     }
+
+    /*assert(this->status_ == Status::committed);
+    if (this->task_set_.size() == max_ope_readonly)
+        res_->local_commit_counts_++;*/
 
     // readonlylock unlock
     if (this->lock_flag == true)
@@ -204,13 +241,14 @@ void Transaction::commit()
         res_->local_additionalabort.push_back(this->abortcount_);
         this->abortcount_ = 0;
     }
+    return;
 }
 
 void Transaction::abort()
 {
     ssn_abort();
 
-    if (this->lock_flag)
+    if (this->lock_flag == true)
         cout << "error abort" << endl;
     for (auto itr = write_set_.begin(); itr != write_set_.end(); ++itr)
     {
@@ -221,9 +259,9 @@ void Transaction::abort()
     write_set_.clear();
     read_set_.clear();
     ++res_->local_abort_counts_;
-    if (isreadonly())
+    if (isreadonly() == true)
     {
-        ++res_->local_readonly_abort_counts_;
+        res_->local_readonly_abort_counts_++;
         ++this->abortcount_;
     }
 

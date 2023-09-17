@@ -18,12 +18,22 @@ void Transaction::ssn_tread(Version *ver, uint64_t key)
     this->pstamp_ = max(this->pstamp_, ver->cstamp_.load(memory_order_acquire));
 
     if (ver->sstamp_.load(memory_order_acquire) == (UINT32_MAX))
+    {
         //// no overwrite yet
         read_set_.emplace_back(key, ver, ver->val_);
+        /*Operation *tmp;
+        tmp->key_ = key;
+        tmp->ver_ = ver;
+        for (int i = 0; i < DATA_SIZE; i++)
+            tmp->value_[i] = ver->val_[i];
+        read_set_.push_back(*tmp);*/
+    }
     else
+    {
         // update pi with r:w edge
         this->sstamp_ = min(this->sstamp_, ver->sstamp_.load(memory_order_acquire));
-    // if (USE_LOCK == 0 || (USE_LOCK == 1 && !isreadonly()))
+        // if (USE_LOCK == 0 || (USE_LOCK == 1 && !isreadonly()))
+    }
     verify_exclusion_or_abort();
 }
 

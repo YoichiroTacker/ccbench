@@ -4,24 +4,24 @@ using namespace std;
 
 void Result::displayAllResult()
 {
-    cout << "abort_counts_:\t\t\t" << total_abort_counts_ << endl;
-    cout << "commit_counts_:\t\t\t" << total_commit_counts_ << endl;
-    cout << "read SSNcheck abort:\t\t" << total_readphase_counts_ << endl;
-    cout << "write SSNcheck abort:\t\t" << total_writephase_counts_ << endl;
-    cout << "commit SSNcheck abort:\t\t" << total_commitphase_counts_ << endl;
-    cout << "ww conflict abort:\t\t" << total_wwconflict_counts_ << endl;
-    cout << "total_readonly_abort:\t\t" << total_readonly_abort_counts_ << endl;
-    cout << "total_read deadlock_abort:\t" << total_rdeadlock_abort_counts_ << endl;
-    cout << "total_write deadlock_abort:\t" << total_wdeadlock_abort_counts_ << endl;
-    // displayAbortRate
+    // cout << "abort_counts_:\t\t\t" << total_abort_counts_ << endl;
+    // cout << "commit_counts_:\t\t\t" << total_commit_counts_ << endl;
+    //  cout << "read SSNcheck abort:\t\t" << total_readphase_counts_ << endl;
+    //  cout << "write SSNcheck abort:\t\t" << total_writephase_counts_ << endl;
+    //  cout << "commit SSNcheck abort:\t\t" << total_commitphase_counts_ << endl;
+    //  cout << "ww conflict abort:\t\t" << total_wwconflict_counts_ << endl;
+    cout << /*"total_readonly_abort:\t\t" <<*/ total_readonly_abort_counts_ << endl;
+    // cout << "total_read deadlock_abort:\t" << total_rdeadlock_abort_counts_ << endl;
+    // cout << "total_write deadlock_abort:\t" << total_wdeadlock_abort_counts_ << endl;
+    //  displayAbortRate
     long double ave_rate =
         (double)total_abort_counts_ /
         (double)(total_commit_counts_ + total_abort_counts_);
-    cout << fixed << setprecision(4) << "abort_rate:\t\t\t" << ave_rate << endl;
+    cout << fixed << setprecision(4) << /*"abort_rate:\t\t\t" <<*/ ave_rate << endl;
     // cout << "traversal counts:\t\t" << total_traversal_counts_ << endl;
 
     // count the number of recursing abort
-    vector<int> tmp;
+    /*vector<int> tmp;
     tmp = total_additionalabort;
     std::sort(tmp.begin(), tmp.end());
     tmp.erase(std::unique(tmp.begin(), tmp.end()), tmp.end());
@@ -29,7 +29,7 @@ void Result::displayAllResult()
     {
         size_t count = std::count(total_additionalabort.begin(), total_additionalabort.end(), *itr);
         cout << *itr << " " << count << endl;
-    }
+    }*/
 }
 
 void Result::addLocalAllResult(const Result &other)
@@ -85,10 +85,11 @@ void Version::init()
 Tuple *Table;       // databaseのtable
 std::mutex SsnLock; // giant lock
 
-void makeTask(std::vector<Task> &tasks, Xoroshiro128Plus &rnd, FastZipf &zipf)
+void makeTask(std::vector<Task> &tasks, Xoroshiro128Plus &rnd, FastZipf &zipf, size_t thid)
 {
     tasks.clear();
-    if ((rnd.next() % 100) < ronly_ratio)
+    // if ((rnd.next() % 100) < ronly_ratio)
+    if (thid != 0) // scan or update by threads
     {
         std::set<uint64_t> keys;
         for (size_t i = 0; i < max_ope_readonly; ++i)
@@ -188,6 +189,22 @@ void makeDB()
     }
 }
 
+/*void viewtask(vector<Task> &tasks)
+{
+    for (auto itr = tasks.begin(); itr != tasks.end(); itr++)
+    {
+        if (itr->ope_ == Ope::READ)
+        {
+            cout << "R" << itr->key_ << " ";
+        }
+        else
+        {
+            cout << "W" << itr->key_ << " ";
+        }
+    }
+    cout << endl;
+}*/
+
 void worker(size_t thid, char &ready, const bool &start, const bool &quit)
 {
     Xoroshiro128Plus rnd;
@@ -205,7 +222,7 @@ void worker(size_t thid, char &ready, const bool &start, const bool &quit)
 
     while (quit == false)
     {
-        makeTask(trans.task_set_, rnd, zipf);
+        makeTask(trans.task_set_, rnd, zipf, thid);
         // viewtask(trans.task_set_);
 
     RETRY:
@@ -213,6 +230,7 @@ void worker(size_t thid, char &ready, const bool &start, const bool &quit)
             break;
 
         trans.tbegin();
+        // cout << thid << endl;
         for (auto itr = trans.task_set_.begin(); itr != trans.task_set_.end();
              ++itr)
         {
@@ -228,14 +246,14 @@ void worker(size_t thid, char &ready, const bool &start, const bool &quit)
             if (trans.status_ == Status::aborted)
             {
                 trans.abort();
-
                 goto RETRY;
             }
         }
         trans.commit();
         if (trans.status_ == Status::committed)
         {
-            myres.local_commit_counts_++;
+            if (trans.task_set_.size() == max_ope_readonly) // SCAN Tx count
+                myres.local_commit_counts_++;
         }
         else if (trans.status_ == Status::aborted)
         {
@@ -246,7 +264,7 @@ void worker(size_t thid, char &ready, const bool &start, const bool &quit)
     return;
 }
 
-void displayDB()
+/*void displayDB()
 {
     Tuple *tuple;
     Version *version;
@@ -289,7 +307,7 @@ void displayDB()
             version = version->prev_;
         }
     }
-}
+}*/
 
 int main(int argc, char *argv[])
 {
@@ -332,9 +350,9 @@ int main(int argc, char *argv[])
     ErmiaResult[0].displayAllResult();
 
     uint64_t result = (ErmiaResult[0].total_commit_counts_ * 1000) / time;
-    cout << "latency[ns]:\t\t\t" << powl(10.0, 9.0) / result * thread_num
-         << endl;
-    cout << "throughput[tps]:\t\t" << result << endl;
+    // uint64_t result = ErmiaResult[0].total_commit_counts_;
+    //  cout << "latency[ns]:\t\t\t" << powl(10.0, 9.0) / result * thread_num << endl;
+    cout << /*"throughput[tps]:\t\t" <<*/ result << endl;
 
     // displayDB();
 
