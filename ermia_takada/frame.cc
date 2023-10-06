@@ -1,6 +1,7 @@
 #include "frame.hh"
 
 using namespace std;
+extern int USE_LOCK;
 
 void Result::displayAllResult()
 {
@@ -311,6 +312,10 @@ void worker(size_t thid, char &ready, const bool &start, const bool &quit)
 
 int main(int argc, char *argv[])
 {
+  auto use_lock = std::getenv("USE_LOCK");
+  if (use_lock) {
+    USE_LOCK = atoi(use_lock);
+  }
     print_mode();
     // displayParameter();
     makeDB();
