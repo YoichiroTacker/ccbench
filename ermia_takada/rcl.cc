@@ -219,10 +219,6 @@ void Transaction::commit()
         return;
     }
 
-    /*assert(this->status_ == Status::committed);
-    if (this->task_set_.size() == max_ope_readonly)
-        res_->local_commit_counts_++;*/
-
     // readonlylock unlock
     if (this->lock_flag == true)
     {
@@ -262,8 +258,9 @@ void Transaction::abort()
     ++res_->local_abort_counts_;
     if (isreadonly() == true)
     {
-        res_->local_readonly_abort_counts_++;
+        // res_->local_readonly_abort_counts_++;
         ++this->abortcount_;
+        res_->local_scan_abort_counts_++;
     }
 
     // 提案手法: read only transactionのlock
