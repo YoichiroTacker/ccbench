@@ -36,7 +36,7 @@ add_executable(ermia.exe ${ERMIA_SOURCES})
 target_link_libraries(ermia.exe
         Boost::filesystem
         gflags::gflags
-        ${PROJECT_SOURCE_DIR}/../third_party/mimalloc/out/release/libmimalloc.a
+        #${PROJECT_SOURCE_DIR}/../third_party/mimalloc/out/release/libmimalloc.a
         Threads::Threads
         )
  
