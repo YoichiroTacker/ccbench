@@ -52,5 +52,4 @@ add_definitions(-Drratio=0)                    #read ratio of single transaction
 add_definitions(-Dthread_num=7)                 #Total number of records
 add_definitions(-Dtuple_num=10000)              #Total number of records
 add_definitions(-Dskew=0.5)                     #skew(0~0.99)
-add_definitions(-DUSE_LOCK=1)                   #read-only lock flag "0 = dont use, 1 = use"
 add_definitions(-DDATA_SIZE=20)                #int(4byte)* DATA_SIZE= Data byte

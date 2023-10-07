@@ -4,6 +4,7 @@ using namespace std;
 
 extern std::atomic<uint64_t> timestampcounter;
 extern std::mutex SsnLock;
+int USE_LOCK = 0;
 
 void print_mode()
 {
