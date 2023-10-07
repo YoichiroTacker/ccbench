@@ -5,20 +5,24 @@ extern int USE_LOCK;
 
 void Result::displayAllResult()
 {
-    // cout << "abort_counts_:\t\t\t" << total_abort_counts_ << endl;
-    // cout << "commit_counts_:\t\t\t" << total_commit_counts_ << endl;
+    cout << "abort_counts_:\t\t" << total_abort_counts_;
+    cout << "(scan:" << total_scan_abort_counts_ << ", "
+         << "update:" << total_abort_counts_ - total_scan_abort_counts_ << ")" << endl;
+    cout << "commit_counts_:\t\t" << total_commit_counts_;
+    cout << "(scan:" << total_scan_commit_counts_ << ", "
+         << "update:" << total_commit_counts_ - total_scan_commit_counts_ << ")" << endl;
     //  cout << "read SSNcheck abort:\t\t" << total_readphase_counts_ << endl;
     //  cout << "write SSNcheck abort:\t\t" << total_writephase_counts_ << endl;
     //  cout << "commit SSNcheck abort:\t\t" << total_commitphase_counts_ << endl;
     //  cout << "ww conflict abort:\t\t" << total_wwconflict_counts_ << endl;
-    cout << /*"total_readonly_abort:\t\t" <<*/ total_readonly_abort_counts_ << endl;
+    // cout << /*"total_readonly_abort:\t\t" <<*/ total_readonly_abort_counts_ << endl;
     // cout << "total_read deadlock_abort:\t" << total_rdeadlock_abort_counts_ << endl;
     // cout << "total_write deadlock_abort:\t" << total_wdeadlock_abort_counts_ << endl;
     //  displayAbortRate
     long double ave_rate =
         (double)total_abort_counts_ /
         (double)(total_commit_counts_ + total_abort_counts_);
-    cout << fixed << setprecision(4) << /*"abort_rate:\t\t\t" <<*/ ave_rate << endl;
+    cout << fixed << setprecision(4) << "abort_rate:\t\t" << ave_rate << endl;
     // cout << "traversal counts:\t\t" << total_traversal_counts_ << endl;
 
     // count the number of recursing abort
@@ -46,6 +50,8 @@ void Result::addLocalAllResult(const Result &other)
     total_additionalabort.insert(total_additionalabort.end(), other.local_additionalabort.begin(), other.local_additionalabort.end());
     total_rdeadlock_abort_counts_ += other.local_rdeadlock_abort_counts_;
     total_wdeadlock_abort_counts_ += other.local_wdeadlock_abort_counts_;
+    total_scan_abort_counts_ += other.local_scan_abort_counts_;
+    total_scan_commit_counts_ += other.local_scan_commit_counts_;
 }
 
 bool isReady(const std::vector<char> &readys)
@@ -253,8 +259,9 @@ void worker(size_t thid, char &ready, const bool &start, const bool &quit)
         trans.commit();
         if (trans.status_ == Status::committed)
         {
+            myres.local_commit_counts_++;
             if (trans.task_set_.size() == max_ope_readonly) // SCAN Tx count
-                myres.local_commit_counts_++;
+                myres.local_scan_commit_counts_++;
         }
         else if (trans.status_ == Status::aborted)
         {
@@ -312,10 +319,11 @@ void worker(size_t thid, char &ready, const bool &start, const bool &quit)
 
 int main(int argc, char *argv[])
 {
-  auto use_lock = std::getenv("USE_LOCK");
-  if (use_lock) {
-    USE_LOCK = atoi(use_lock);
-  }
+    auto use_lock = std::getenv("USE_LOCK");
+    if (use_lock)
+    {
+        USE_LOCK = atoi(use_lock);
+    }
     print_mode();
     // displayParameter();
     makeDB();
@@ -346,7 +354,6 @@ int main(int argc, char *argv[])
     endtime = chrono::system_clock::now();
 
     double time = static_cast<double>(chrono::duration_cast<chrono::microseconds>(endtime - starttime).count() / 1000.0);
-    // printf("time %lf[ms]\n", time);
 
     for (unsigned int i = 0; i < thread_num; ++i)
     {
@@ -355,9 +362,8 @@ int main(int argc, char *argv[])
     ErmiaResult[0].displayAllResult();
 
     uint64_t result = (ErmiaResult[0].total_commit_counts_ * 1000) / time;
-    // uint64_t result = ErmiaResult[0].total_commit_counts_;
     //  cout << "latency[ns]:\t\t\t" << powl(10.0, 9.0) / result * thread_num << endl;
-    cout << /*"throughput[tps]:\t\t" <<*/ result << endl;
+    cout << "throughput[tps]:\t" << result << endl;
 
     // displayDB();
 

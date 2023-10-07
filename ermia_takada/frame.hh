@@ -26,6 +26,10 @@ public:
     uint64_t local_commit_counts_ = 0;
     uint64_t total_abort_counts_ = 0;
     uint64_t total_commit_counts_ = 0;
+    uint64_t local_scan_abort_counts_ = 0;
+    uint64_t total_scan_abort_counts_ = 0;
+    uint64_t local_scan_commit_counts_ = 0;
+    uint64_t total_scan_commit_counts_ = 0;
     uint64_t local_readphase_counts_ = 0;
     uint64_t local_writephase_counts_ = 0;
     uint64_t local_commitphase_counts_ = 0;
