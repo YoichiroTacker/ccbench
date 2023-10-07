@@ -354,7 +354,6 @@ int main(int argc, char *argv[])
     endtime = chrono::system_clock::now();
 
     double time = static_cast<double>(chrono::duration_cast<chrono::microseconds>(endtime - starttime).count() / 1000.0);
-    // printf("time %lf[ms]\n", time);
 
     for (unsigned int i = 0; i < thread_num; ++i)
     {
@@ -363,7 +362,6 @@ int main(int argc, char *argv[])
     ErmiaResult[0].displayAllResult();
 
     uint64_t result = (ErmiaResult[0].total_commit_counts_ * 1000) / time;
-    // uint64_t result = ErmiaResult[0].total_commit_counts_;
     //  cout << "latency[ns]:\t\t\t" << powl(10.0, 9.0) / result * thread_num << endl;
     cout << "throughput[tps]:\t" << result << endl;
 
