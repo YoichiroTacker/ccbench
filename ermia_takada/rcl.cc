@@ -1,4 +1,5 @@
 #include "frame.hh"
+#include <string.h>
 
 using namespace std;
 
@@ -94,7 +95,7 @@ FINISH_TREAD:
     return;
 }
 
-void Transaction::twrite(uint64_t key, std::array<int, DATA_SIZE> write_val)
+void Transaction::twrite(uint64_t key, std::array<std::byte, DATA_SIZE> write_val)
 {
     // update local write set
     if (searchWriteSet(key) == true)
@@ -107,10 +108,8 @@ void Transaction::twrite(uint64_t key, std::array<int, DATA_SIZE> write_val)
     Version *expected, *desired;
     desired = new Version();
     desired->cstamp_.store(this->txid_, memory_order_release);
-    for (int i = 0; i < DATA_SIZE; i++)
-    {
-        desired->val_[i] = write_val[i];
-    }
+
+    memcpy(desired->val_.data(), write_val.data(), DATA_SIZE); // FYI:desired->valにwrite_valをコピー
 
     //----------------------------------------------------------------
     // deadlock prevention(no-wait)
