@@ -21,7 +21,7 @@ void Result::displayAllResult()
     //  displayAbortRate
     long double ave_rate =
         (double)total_abort_counts_ /
-        (double)(total_commit_counts_ + total_abort_counts_);
+        (double)(total_commit_counts_ + total_abort_counts_) * 100;
     cout << fixed << setprecision(4) << "abort_rate:\t\t" << ave_rate << endl;
     // cout << "traversal counts:\t\t" << total_traversal_counts_ << endl;
 
@@ -95,8 +95,8 @@ std::mutex SsnLock; // giant lock
 void makeTask(std::vector<Task> &tasks, Xoroshiro128Plus &rnd, FastZipf &zipf, size_t thid)
 {
     tasks.clear();
-    // if ((rnd.next() % 100) < ronly_ratio)
-    if (thid != 0) // scan or update by threads
+    if ((rnd.next() % 100) < ronly_ratio) // scan or update by ratio
+    // if (thid != 0) // scan or update by thread ID
     {
         std::set<uint64_t> keys;
         for (size_t i = 0; i < max_ope_readonly; ++i)
@@ -361,6 +361,9 @@ int main(int argc, char *argv[])
     uint64_t result = (ErmiaResult[0].total_commit_counts_ * 1000) / time;
     //  cout << "latency[ns]:\t\t\t" << powl(10.0, 9.0) / result * thread_num << endl;
     cout << "throughput[tps]:\t" << result << endl;
+
+    uint64_t result2 = (ErmiaResult[0].total_scan_commit_counts_ * 1000 * max_ope_readonly + (ErmiaResult[0].total_commit_counts_ - ErmiaResult[0].total_scan_commit_counts_) * 1000 * max_ope) / time;
+    cout << "throughput[op per sec]:\t" << result2 << endl;
 
     // displayDB();
 

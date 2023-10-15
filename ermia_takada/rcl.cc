@@ -10,9 +10,9 @@ int USE_LOCK = 0;
 void print_mode()
 {
     if (USE_LOCK == 0)
-        cout << "this result is executed by RCL+SSN" << endl;
+        cout << "this result is executed by RCL + SSN" << endl;
     else if (USE_LOCK == 1)
-        cout << "this result is executed by RCL+SSN+Robust Safe Retry" << endl;
+        cout << "this result is executed by RCL + SSN + Robust Safe Retry" << endl;
 }
 
 void Transaction::tbegin()
@@ -125,13 +125,6 @@ void Transaction::twrite(uint64_t key, std::array<std::byte, DATA_SIZE> write_va
     for (;;)
     {
         expected = tuple->latest_.load(memory_order_acquire);
-        if (tuple->rlocked.load() > 0)
-        {
-            // desired->locked_flag_ = true;
-            this->status_ = Status::aborted;
-            ++res_->local_rdeadlock_abort_counts_;
-            goto FINISH_TWRITE;
-        }
         for (auto itr = write_set_.begin(); itr != write_set_.end(); itr++)
         {
             Tuple *tmp = (*itr).tuple_;
@@ -142,6 +135,15 @@ void Transaction::twrite(uint64_t key, std::array<std::byte, DATA_SIZE> write_va
                 goto FINISH_TWRITE;
             }
         }
+        if (tuple->rlocked.load() > 0)
+        {
+            desired->locked_flag_ = true;
+            //    this->status_ = Status::aborted;
+            //++res_->local_rdeadlock_abort_counts_;
+            //    goto FINISH_TWRITE;
+            continue;
+        }
+
         if (!tuple->mmt_.w_try_lock())
         {
             //  deadlock prevention for write lock
@@ -153,7 +155,7 @@ void Transaction::twrite(uint64_t key, std::array<std::byte, DATA_SIZE> write_va
             }
             //----------------------------------------------------------------
             // deadlock prevention for r-only lock
-            if (tuple->rlocked.load() > 0)
+            /*if (tuple->rlocked.load() > 0)
             {
                 // desired->locked_flag_ = true;
                 this->status_ = Status::aborted;
@@ -170,7 +172,7 @@ void Transaction::twrite(uint64_t key, std::array<std::byte, DATA_SIZE> write_va
                     ++res_->local_rdeadlock_abort_counts_;
                     goto FINISH_TWRITE;
                 }
-            }
+            }*/
             //----------------------------------------------------------------
         }
         else
