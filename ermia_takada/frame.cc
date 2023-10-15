@@ -125,9 +125,9 @@ void makeTask(std::vector<Task> &tasks, Xoroshiro128Plus &rnd, FastZipf &zipf, s
             }
             else
             {
-                std::array<int, DATA_SIZE> tmparray;
+                std::array<std::byte, DATA_SIZE> tmparray;
                 for (int i = 0; i < DATA_SIZE; i++)
-                    tmparray[i] = zipf();
+                    tmparray[i] = static_cast<std::byte>(zipf());
                 tasks.emplace_back(Ope::WRITE, tmpkey, tmparray);
             }
         }
@@ -187,11 +187,8 @@ void makeDB()
         Table[i].key = i;
         Version *verTmp = new Version();
         verTmp->status_.store(Status::committed, memory_order_release);
-        // verTmp->val_= 0;
         for (int i = 0; i < DATA_SIZE; i++)
-        {
-            verTmp->val_[i] = 0;
-        }
+            verTmp->val_[i] = static_cast<std::byte>(0);
         Table[i].latest_.store(verTmp, memory_order_release);
     }
 }
