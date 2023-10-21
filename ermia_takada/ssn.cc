@@ -37,6 +37,7 @@ void Transaction::ssn_twrite(Version *desired, uint64_t key)
     desired->prev_->pstamp_.store(this->txid_, memory_order_release);
     if (desired->locked_flag_)
         this->pstamp_ = max(this->pstamp_, desired->prev_->pstamp_for_rlock_.load(memory_order_acquire));
+    // this->pstamp_ = max(this->pstamp_, desired->prev_->pstamp_.load(memory_order_acquire));
     else
         // Update eta with w:r edge
         this->pstamp_ = max(this->pstamp_, desired->prev_->pstamp_.load(memory_order_acquire));
@@ -69,9 +70,8 @@ void Transaction::ssn_commit()
     for (auto itr = write_set_.begin(); itr != write_set_.end(); ++itr)
     {
         if ((*itr).ver_->locked_flag_)
-        {
             this->pstamp_ = max(this->pstamp_, (*itr).ver_->prev_->pstamp_for_rlock_.load(memory_order_acquire));
-        }
+        // this->pstamp_ = max(this->pstamp_, (*itr).ver_->prev_->pstamp_.load(memory_order_acquire));
         else
             this->pstamp_ = max(this->pstamp_, (*itr).ver_->prev_->pstamp_.load(memory_order_acquire));
     }

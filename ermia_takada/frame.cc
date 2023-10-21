@@ -5,12 +5,13 @@ extern int USE_LOCK;
 
 void Result::displayAllResult()
 {
-    cout << "abort_counts_:\t\t" << total_abort_counts_;
-    cout << "(scan:" << total_scan_abort_counts_ << ", "
-         << "update:" << total_abort_counts_ - total_scan_abort_counts_ << ")" << endl;
+    /*cout << "abort_counts_:\t\t" << total_abort_counts_;
+    cout << "\t(scan:" << total_scan_abort_counts_ << ", "
+         << "\tupdate:" << total_abort_counts_ - total_scan_abort_counts_ << ")" << endl;
     cout << "commit_counts_:\t\t" << total_commit_counts_;
-    cout << "(scan:" << total_scan_commit_counts_ << ", "
-         << "update:" << total_commit_counts_ - total_scan_commit_counts_ << ")" << endl;
+    cout << "\t(scan:" << total_scan_commit_counts_ << ", "
+         << "\tupdate:" << total_commit_counts_ - total_scan_commit_counts_ << ")" << endl;*/
+
     //  cout << "read SSNcheck abort:\t\t" << total_readphase_counts_ << endl;
     //  cout << "write SSNcheck abort:\t\t" << total_writephase_counts_ << endl;
     //  cout << "commit SSNcheck abort:\t\t" << total_commitphase_counts_ << endl;
@@ -22,7 +23,13 @@ void Result::displayAllResult()
     long double ave_rate =
         (double)total_abort_counts_ /
         (double)(total_commit_counts_ + total_abort_counts_) * 100;
-    cout << fixed << setprecision(4) << "abort_rate:\t\t" << ave_rate << endl;
+    cout << fixed << setprecision(4) << "abort_rate:\t\t" << ave_rate;
+
+    long double ave_rate_scan = (double)total_scan_abort_counts_ /
+                                (double)(total_scan_commit_counts_ + total_scan_abort_counts_) * 100;
+    long double ave_rate_update = ((double)total_abort_counts_ - total_scan_abort_counts_) / (double)(total_commit_counts_ - total_scan_commit_counts_ + total_abort_counts_ - total_scan_abort_counts_) * 100;
+    cout << "\t(scan:" << ave_rate_scan << ", "
+         << "\tupdate:" << ave_rate_update << ")" << endl;
     // cout << "traversal counts:\t\t" << total_traversal_counts_ << endl;
 
     // count the number of recursing abort
@@ -95,8 +102,8 @@ std::mutex SsnLock; // giant lock
 void makeTask(std::vector<Task> &tasks, Xoroshiro128Plus &rnd, FastZipf &zipf, size_t thid)
 {
     tasks.clear();
-    if ((rnd.next() % 100) < ronly_ratio) // scan or update by ratio
-    // if (thid != 0) // scan or update by thread ID
+    // if ((rnd.next() % 100) < ronly_ratio) // scan or update by ratio
+    if (thid != 0) // scan or update by thread ID
     {
         std::set<uint64_t> keys;
         for (size_t i = 0; i < max_ope_readonly; ++i)
@@ -358,12 +365,21 @@ int main(int argc, char *argv[])
     }
     ErmiaResult[0].displayAllResult();
 
-    uint64_t result = (ErmiaResult[0].total_commit_counts_ * 1000) / time;
+    uint64_t result = ErmiaResult[0].total_commit_counts_ * 1000 / time;
     //  cout << "latency[ns]:\t\t\t" << powl(10.0, 9.0) / result * thread_num << endl;
-    cout << "throughput[tps]:\t" << result << endl;
+    cout << "throughput[tps]:\t" << result;
 
-    uint64_t result2 = (ErmiaResult[0].total_scan_commit_counts_ * 1000 * max_ope_readonly + (ErmiaResult[0].total_commit_counts_ - ErmiaResult[0].total_scan_commit_counts_) * 1000 * max_ope) / time;
-    cout << "throughput[op per sec]:\t" << result2 << endl;
+    // uint64_t result2 = (ErmiaResult[0].total_scan_commit_counts_ * 1000 * max_ope_readonly + (ErmiaResult[0].total_commit_counts_ - ErmiaResult[0].total_scan_commit_counts_) * 1000 * max_ope) / time;
+    // cout << "throughput[op per sec]:\t" << result2 << endl;
+
+    uint64_t result2 = ErmiaResult[0].total_scan_commit_counts_ * 1000 / time;
+    // cout << "throughput(scan):\t" << result2 << endl;
+
+    uint64_t result3 = (ErmiaResult[0].total_commit_counts_ - ErmiaResult[0].total_scan_commit_counts_) * 1000 / time;
+    // cout << "throughput(update):\t" << result3 << endl;
+
+    cout << "\t(scan:" << result2 << ", "
+         << "\tupdate:" << result3 << ")" << endl;
 
     // displayDB();
 
