@@ -21,12 +21,6 @@ void Transaction::ssn_tread(Version *ver, uint64_t key)
     {
         //// no overwrite yet
         read_set_.emplace_back(key, ver, ver->val_);
-        /*Operation *tmp;
-        tmp->key_ = key;
-        tmp->ver_ = ver;
-        for (int i = 0; i < DATA_SIZE; i++)
-            tmp->value_[i] = ver->val_[i];
-        read_set_.push_back(*tmp);*/
     }
     else
     {
@@ -44,7 +38,7 @@ void Transaction::ssn_twrite(Version *desired, uint64_t key)
     if (desired->locked_flag_)
         this->pstamp_ = max(this->pstamp_, desired->prev_->pstamp_for_rlock_.load(memory_order_acquire));
     else
-        //     Update eta with w:r edge
+        // Update eta with w:r edge
         this->pstamp_ = max(this->pstamp_, desired->prev_->pstamp_.load(memory_order_acquire));
 
     //   t.writes.add(V)
@@ -75,7 +69,9 @@ void Transaction::ssn_commit()
     for (auto itr = write_set_.begin(); itr != write_set_.end(); ++itr)
     {
         if ((*itr).ver_->locked_flag_)
+        {
             this->pstamp_ = max(this->pstamp_, (*itr).ver_->prev_->pstamp_for_rlock_.load(memory_order_acquire));
+        }
         else
             this->pstamp_ = max(this->pstamp_, (*itr).ver_->prev_->pstamp_.load(memory_order_acquire));
     }
@@ -94,10 +90,9 @@ void Transaction::ssn_commit()
     for (auto itr = read_set_.begin(); itr != read_set_.end(); ++itr)
     {
         (*itr).ver_->pstamp_.store((max((*itr).ver_->pstamp_.load(memory_order_acquire), this->cstamp_)), memory_order_release);
-        // 提案手法部分
+        // extention of forced forward edge
         if (this->lock_flag)
-            (*itr).ver_->pstamp_for_rlock_.store(max((*itr).ver_->pstamp_.load(memory_order_acquire), this->pstamp_));
-        //(*itr).ver_->pstamp_for_rlock_.store(this->pstamp_);
+            (*itr).ver_->pstamp_for_rlock_.store(this->pstamp_);
     }
 
     // update pi
