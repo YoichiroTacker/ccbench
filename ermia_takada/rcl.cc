@@ -141,6 +141,10 @@ void Transaction::twrite(uint64_t key, std::array<std::byte, DATA_SIZE> write_va
             //    this->status_ = Status::aborted;
             //++res_->local_rdeadlock_abort_counts_;
             //    goto FINISH_TWRITE;
+            cout << this->pstamp_ << " " << this->sstamp_ << endl;
+            verify_exclusion_or_abort();
+            if (this->status_ == Status::aborted)
+                cout << "lets goo" << endl;
             continue;
         }
 
