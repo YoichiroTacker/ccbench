@@ -1,6 +1,7 @@
 #include "frame.hh"
 
 extern Tuple *Table;
+extern int USE_LOCK;
 
 using namespace std;
 
@@ -35,7 +36,7 @@ void Transaction::ssn_twrite(Version *desired, uint64_t key)
 {
     // Insert my tid for ver->prev_->sstamp_
     desired->prev_->pstamp_.store(this->txid_, memory_order_release);
-    if (desired->locked_flag_)
+    if (desired->locked_flag_ && USE_LOCK == 1)
         this->pstamp_ = max(this->pstamp_, desired->prev_->pstamp_for_rlock_.load(memory_order_acquire));
     // this->pstamp_ = max(this->pstamp_, desired->prev_->pstamp_.load(memory_order_acquire));
     else
@@ -69,7 +70,7 @@ void Transaction::ssn_commit()
     //  finalize eta(T)
     for (auto itr = write_set_.begin(); itr != write_set_.end(); ++itr)
     {
-        if ((*itr).ver_->locked_flag_)
+        if ((*itr).ver_->locked_flag_ && USE_LOCK == 1)
             this->pstamp_ = max(this->pstamp_, (*itr).ver_->prev_->pstamp_for_rlock_.load(memory_order_acquire));
         // this->pstamp_ = max(this->pstamp_, (*itr).ver_->prev_->pstamp_.load(memory_order_acquire));
         else

@@ -13,6 +13,8 @@ void print_mode()
         cout << "this result is executed by RCL + SSN" << endl;
     else if (USE_LOCK == 1)
         cout << "this result is executed by RCL + SSN + Robust Safe Retry" << endl;
+    else if (USE_LOCK == 2)
+        cout << "this result is executed by RCL + SSN for optimizing SCAN" << endl;
 }
 
 void Transaction::tbegin()
@@ -20,6 +22,15 @@ void Transaction::tbegin()
     // if (!this->lock_flag)
     this->txid_ = atomic_fetch_add(&timestampcounter, 1);
     ssn_tbegin();
+    if (USE_LOCK == 2 && isreadonly())
+    {
+        this->lock_flag = true;
+        assert(task_set_sorted_.empty());
+        for (int i = 0; i < task_set_.size(); i++)
+            task_set_sorted_.push_back(task_set_.at(i).key_);
+        std::sort(task_set_sorted_.begin(), task_set_sorted_.end());
+        task_set_sorted_.erase(std::unique(task_set_sorted_.begin(), task_set_sorted_.end()), task_set_sorted_.end());
+    }
 }
 
 void Transaction::tread(uint64_t key)
@@ -31,6 +42,18 @@ void Transaction::tread(uint64_t key)
     // get version to read
     Tuple *tuple;
     tuple = get_tuple(key);
+
+    // read only no safe retry
+    if (this->lock_flag && USE_LOCK == 2)
+    {
+        tuple->rlocked.fetch_add(1);
+        for (;;)
+        {
+            if (tuple->mmt_.r_try_lock())
+                break;
+        }
+        // this->lock_flag =true;
+    }
 
     if (!this->lock_flag)
     {
