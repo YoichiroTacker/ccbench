@@ -30,18 +30,20 @@ void Transaction::ssn_tread(Version *ver, uint64_t key)
         // if (USE_LOCK == 0 || (USE_LOCK == 1 && !isreadonly()))
     }
     verify_exclusion_or_abort();
+
+    // ELR
+    ver->pstamp_ = this->cstamp_aborted;
 }
 
 void Transaction::ssn_twrite(Version *desired, uint64_t key)
 {
     // Insert my tid for ver->prev_->sstamp_
     desired->prev_->pstamp_.store(this->txid_, memory_order_release);
-    if (desired->locked_flag_ && USE_LOCK == 1)
+    /*if (desired->locked_flag_ && USE_LOCK == 1)
         this->pstamp_ = max(this->pstamp_, desired->prev_->pstamp_for_rlock_.load(memory_order_acquire));
-    // this->pstamp_ = max(this->pstamp_, desired->prev_->pstamp_.load(memory_order_acquire));
-    else
-        // Update eta with w:r edge
-        this->pstamp_ = max(this->pstamp_, desired->prev_->pstamp_.load(memory_order_acquire));
+    else*/
+    // Update eta with w:r edge
+    this->pstamp_ = max(this->pstamp_, desired->prev_->pstamp_.load(memory_order_acquire));
 
     //   t.writes.add(V)
     write_set_.emplace_back(key, desired, &Table[key]);
@@ -70,11 +72,10 @@ void Transaction::ssn_commit()
     //  finalize eta(T)
     for (auto itr = write_set_.begin(); itr != write_set_.end(); ++itr)
     {
-        if ((*itr).ver_->locked_flag_ && USE_LOCK == 1)
+        /*if ((*itr).ver_->locked_flag_ && USE_LOCK == 1)
             this->pstamp_ = max(this->pstamp_, (*itr).ver_->prev_->pstamp_for_rlock_.load(memory_order_acquire));
-        // this->pstamp_ = max(this->pstamp_, (*itr).ver_->prev_->pstamp_.load(memory_order_acquire));
-        else
-            this->pstamp_ = max(this->pstamp_, (*itr).ver_->prev_->pstamp_.load(memory_order_acquire));
+        else*/
+        this->pstamp_ = max(this->pstamp_, (*itr).ver_->prev_->pstamp_.load(memory_order_acquire));
     }
 
     // ssn_check_exclusion
