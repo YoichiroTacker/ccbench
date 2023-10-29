@@ -32,7 +32,8 @@ void Transaction::ssn_tread(Version *ver, uint64_t key)
     verify_exclusion_or_abort();
 
     // ELR
-    ver->pstamp_ = this->cstamp_aborted;
+    if (this->lock_flag == true)
+        ver->pstamp_.store(max(this->cstamp_aborted, ver->pstamp_.load(memory_order_acquire)), memory_order_release);
 }
 
 void Transaction::ssn_twrite(Version *desired, uint64_t key)
@@ -64,6 +65,9 @@ void Transaction::ssn_commit()
 {
     // finalize pi(T)
     this->sstamp_ = min(this->sstamp_, this->cstamp_);
+    // if using RCL
+    assert(this->sstamp_ == this->cstamp_);
+
     for (auto itr = read_set_.begin(); itr != read_set_.end(); ++itr)
     {
         this->sstamp_ = min(this->sstamp_, (*itr).ver_->sstamp_.load(memory_order_acquire));
