@@ -213,6 +213,7 @@ public:
     Status status_ = Status::inFlight;
     int abortcount_ = 0;
     bool lock_flag = false; // rlockをかけているtransaction
+    uint32_t cstamp_aborted = 0;
 
     vector<Operation> read_set_;  // write set
     vector<Operation> write_set_; // read set

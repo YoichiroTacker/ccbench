@@ -31,6 +31,10 @@ void Transaction::tbegin()
         std::sort(task_set_sorted_.begin(), task_set_sorted_.end());
         task_set_sorted_.erase(std::unique(task_set_sorted_.begin(), task_set_sorted_.end()), task_set_sorted_.end());
     }
+
+    // ELR
+    if (USE_LOCK == 1 && this->lock_flag == true)
+        this->cstamp_ = atomic_fetch_add(&timestampcounter, 1);
 }
 
 void Transaction::tread(uint64_t key)
@@ -43,7 +47,7 @@ void Transaction::tread(uint64_t key)
     Tuple *tuple;
     tuple = get_tuple(key);
 
-    // read only no safe retry
+    // read only && no safe retry
     if (this->lock_flag && USE_LOCK == 2)
     {
         tuple->rlocked.fetch_add(1);
@@ -108,7 +112,12 @@ void Transaction::tread(uint64_t key)
 
     if (!this->lock_flag)
         tuple->mmt_.r_unlock(); // short duration?
-
+    // ELR
+    if (this->lock_flag)
+    {
+        tuple->rlocked.fetch_sub(1);
+        tuple->mmt_.r_unlock();
+    }
     if (this->status_ == Status::aborted)
     {
         ++res_->local_readphase_counts_;
@@ -216,7 +225,8 @@ FINISH_TWRITE:
 
 void Transaction::commit()
 {
-    this->cstamp_ = atomic_fetch_add(&timestampcounter, 1);
+    if (!this->lock_flag)
+        this->cstamp_ = atomic_fetch_add(&timestampcounter, 1);
 
     // begin pre-commit
     SsnLock.lock();
@@ -246,12 +256,12 @@ void Transaction::commit()
     // readonlylock unlock
     if (this->lock_flag == true)
     {
-        for (auto itr = task_set_sorted_.begin(); itr != task_set_sorted_.end(); itr++)
+        /*for (auto itr = task_set_sorted_.begin(); itr != task_set_sorted_.end(); itr++)
         {
             Tuple *tmptuple = get_tuple(*itr);
             tmptuple->rlocked.fetch_sub(1);
             tmptuple->mmt_.r_unlock();
-        }
+        }*/
         this->lock_flag = false;
         task_set_sorted_.clear();
     }
@@ -269,8 +279,6 @@ void Transaction::abort()
 {
     ssn_abort();
 
-    if (this->lock_flag == true)
-        cout << "error abort" << endl;
     for (auto itr = write_set_.begin(); itr != write_set_.end(); ++itr)
     {
         (*itr).ver_->status_.store(Status::aborted, memory_order_release);
@@ -311,5 +319,7 @@ void Transaction::abort()
             // this->txid_ = this->cstamp_;
         }
         this->lock_flag = true;
+        // ELR
+        this->cstamp_aborted = this->cstamp_;
     }
 }
