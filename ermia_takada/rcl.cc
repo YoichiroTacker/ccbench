@@ -47,7 +47,7 @@ void Transaction::tread(uint64_t key)
                 if (this->txid_ >= expected->cstamp_.load(memory_order_acquire))
                 {
                     this->status_ = Status::aborted;
-                    ++res_->local_rdeadlock_abort_counts_;
+                    //++res_->local_rdeadlock_abort_counts_;
                     goto FINISH_TREAD;
                 }
                 // r-w deadlock prevention
@@ -57,7 +57,7 @@ void Transaction::tread(uint64_t key)
                     if (tmp->rlocked.load() > 0)
                     {
                         this->status_ = Status::aborted;
-                        ++res_->local_rdeadlock_abort_counts_;
+                        //++res_->local_rdeadlock_abort_counts_;
                         goto FINISH_TREAD;
                     }
                 }
@@ -90,7 +90,7 @@ void Transaction::tread(uint64_t key)
 
     if (this->status_ == Status::aborted)
     {
-        ++res_->local_readphase_counts_;
+        //++res_->local_readphase_counts_;
         goto FINISH_TREAD;
     }
 FINISH_TREAD:
@@ -121,6 +121,7 @@ void Transaction::twrite(uint64_t key, std::array<std::byte, DATA_SIZE> write_va
             if (tmp->rlocked.load() > 0)
             {
                 this->status_ = Status::aborted;
+                // w-ronlylock deadlock
                 ++res_->local_rdeadlock_abort_counts_;
                 goto FINISH_TWRITE;
             }
@@ -128,7 +129,7 @@ void Transaction::twrite(uint64_t key, std::array<std::byte, DATA_SIZE> write_va
         if (tuple->rlocked.load() > 0)
         {
             desired->locked_flag_ = true;
-            // count the number of executing try_lock
+            // ronly lockが取られていて待っている状態
             ++res_->local_traversal_counts_;
             continue;
         }
@@ -138,9 +139,12 @@ void Transaction::twrite(uint64_t key, std::array<std::byte, DATA_SIZE> write_va
             if (this->txid_ > expected->cstamp_.load(memory_order_acquire))
             {
                 this->status_ = Status::aborted;
+                // w-w deadlock counts
                 ++res_->local_wdeadlock_abort_counts_;
                 goto FINISH_TWRITE;
             }
+            // ronly lockもなくてw-w deadlockもないけどlockが取れない
+            //++res_->local_rdeadlock_abort_counts_;
         }
         else
             break;
@@ -152,18 +156,15 @@ void Transaction::twrite(uint64_t key, std::array<std::byte, DATA_SIZE> write_va
     ssn_twrite(desired, key);
 
     if (this->status_ == Status::aborted)
-        ++res_->local_writephase_counts_;
+        //++res_->local_writephase_counts_;
 
-FINISH_TWRITE:
-    return;
+    FINISH_TWRITE:
+        return;
 }
 
 void Transaction::commit()
 {
-    if (this->istargetTx && USE_LOCK == 2)
-    {
-    }
-    else
+    if (!(this->istargetTx && USE_LOCK == 2))
         this->cstamp_ = atomic_fetch_add(&timestampcounter, 1);
 
     SsnLock.lock();

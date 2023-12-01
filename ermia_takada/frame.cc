@@ -10,9 +10,9 @@ void Result::displayAllResult(double time)
     //  cout << "commit SSNcheck abort:\t\t" << total_commitphase_counts_ << endl;
     //  cout << "ww conflict abort:\t\t" << total_wwconflict_counts_ << endl;
     // cout << /*"total_readonly_abort:\t\t" <<*/ total_readonly_abort_counts_ << endl;
-    // cout << "total_read deadlock_abort:\t" << total_rdeadlock_abort_counts_ << endl;
-    // cout << "total_write deadlock_abort:\t" << total_wdeadlock_abort_counts_ << endl;
-    cout << "traversal counts:\t\t" << total_traversal_counts_ << endl;
+    cout << "w-ronlylock deadlock counts:\t" << total_rdeadlock_abort_counts_ << endl;
+    cout << "w-w deadlock counts:\t" << total_wdeadlock_abort_counts_ << endl;
+    cout << "ronly lock wait counts:\t\t" << total_traversal_counts_ << endl;
 
     long double ave_rate = (double)total_abort_counts_ / (double)(total_commit_counts_ + total_abort_counts_) * 100;
     long double ave_rate_scan = (double)total_scan_abort_counts_ / (double)(total_scan_commit_counts_ + total_scan_abort_counts_) * 100;
@@ -55,8 +55,8 @@ void Result::addLocalAllResult(const Result &other)
     total_traversal_counts_ += other.local_traversal_counts_;
     // total_readonly_abort_counts_ += other.local_readonly_abort_counts_;
     // total_additionalabort.insert(total_additionalabort.end(), other.local_additionalabort.begin(), other.local_additionalabort.end());
-    // total_rdeadlock_abort_counts_ += other.local_rdeadlock_abort_counts_;
-    // total_wdeadlock_abort_counts_ += other.local_wdeadlock_abort_counts_;
+    total_rdeadlock_abort_counts_ += other.local_rdeadlock_abort_counts_;
+    total_wdeadlock_abort_counts_ += other.local_wdeadlock_abort_counts_;
     total_scan_abort_counts_ += other.local_scan_abort_counts_;
     total_scan_commit_counts_ += other.local_scan_commit_counts_;
 }
