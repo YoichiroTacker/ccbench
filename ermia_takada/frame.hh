@@ -52,7 +52,7 @@ public:
     uint64_t total_wdeadlock_abort_counts_ = 0;
 
     void
-    displayAllResult();
+    displayAllResult(double time);
 
     void addLocalAllResult(const Result &other);
 };
@@ -212,7 +212,7 @@ public:
     uint32_t txid_;                // TID and begin timestamp
     Status status_ = Status::inFlight;
     int abortcount_ = 0;
-    bool lock_flag = false; // rlockをかけているtransaction
+    bool istargetTx = false; // rlockをかけているtransaction
     uint32_t cstamp_aborted = 0;
 
     vector<Operation> read_set_;  // write set

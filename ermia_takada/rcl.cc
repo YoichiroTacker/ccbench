@@ -14,82 +14,50 @@ void print_mode()
     else if (USE_LOCK == 1)
         cout << "this result is executed by RCL + SSN + Robust Safe Retry" << endl;
     else if (USE_LOCK == 2)
-        cout << "this result is executed by RCL + SSN for optimizing SCAN" << endl;
+        cout << "this result is executed by RCL + SSN with ELR" << endl;
 }
 
 void Transaction::tbegin()
 {
-    // if (!this->lock_flag)
     this->txid_ = atomic_fetch_add(&timestampcounter, 1);
     ssn_tbegin();
-    if (USE_LOCK == 2 && isreadonly())
-    {
-        this->lock_flag = true;
-        assert(task_set_sorted_.empty());
-        for (int i = 0; i < task_set_.size(); i++)
-            task_set_sorted_.push_back(task_set_.at(i).key_);
-        std::sort(task_set_sorted_.begin(), task_set_sorted_.end());
-        task_set_sorted_.erase(std::unique(task_set_sorted_.begin(), task_set_sorted_.end()), task_set_sorted_.end());
-    }
 
     // ELR
-    if (USE_LOCK == 1 && this->lock_flag == true)
+    if (USE_LOCK == 2 && this->istargetTx)
         this->cstamp_ = atomic_fetch_add(&timestampcounter, 1);
 }
 
 void Transaction::tread(uint64_t key)
 {
-    // read-own-writes, re-read from previous read in the same tx.
     if (searchWriteSet(key) == true || searchReadSet(key) == true)
         goto FINISH_TREAD;
 
-    // get version to read
     Tuple *tuple;
     tuple = get_tuple(key);
 
-    // read only && no safe retry
-    if (this->lock_flag && USE_LOCK == 2)
+    if (!this->istargetTx)
     {
-        tuple->rlocked.fetch_add(1);
-        for (;;)
-        {
-            if (tuple->mmt_.r_try_lock())
-                break;
-        }
-        // this->lock_flag =true;
-    }
-
-    if (!this->lock_flag)
-    {
-        //----------------------------------------------------------------
-        // deadlock prevention(no-wait)
-        /*if (!tuple->mmt_.r_try_lock())
-        {
-            this->status_ = Status::aborted;
-            ++res_->local_wwconflict_counts_;
-            goto FINISH_TREAD;
-        }*/
-        //----------------------------------------------------------------
         Version *expected;
         for (;;)
         {
             expected = tuple->latest_.load(memory_order_acquire);
             if (!tuple->mmt_.r_try_lock())
             {
+                // r-ronlylock deadlock prevention
                 if (this->txid_ >= expected->cstamp_.load(memory_order_acquire))
                 {
                     this->status_ = Status::aborted;
-                    ++res_->local_rdeadlock_abort_counts_;
+                    //++res_->local_rdeadlock_abort_counts_;
                     goto FINISH_TREAD;
                 }
-                // rdeadlock prevention
+                // r-w deadlock prevention
                 for (auto itr = write_set_.begin(); itr != write_set_.end(); itr++)
                 {
                     Tuple *tmp = (*itr).tuple_;
                     if (tmp->rlocked.load() > 0)
                     {
                         this->status_ = Status::aborted;
-                        ++res_->local_rdeadlock_abort_counts_;
+                        //++res_->local_rdeadlock_abort_counts_;
                         goto FINISH_TREAD;
                     }
                 }
@@ -102,25 +70,27 @@ void Transaction::tread(uint64_t key)
 
     Version *ver;
     ver = tuple->latest_.load(memory_order_acquire);
-    while (ver->status_.load(memory_order_acquire) != Status::committed) // || txid_ < ver->cstamp_.load(memory_order_acquire))
+    while (ver->status_.load(memory_order_acquire) != Status::committed)
     {
         ver = ver->prev_;
-        ++res_->local_traversal_counts_;
+        //++res_->local_traversal_counts_;
     }
 
     ssn_tread(ver, key);
 
-    if (!this->lock_flag)
-        tuple->mmt_.r_unlock(); // short duration?
+    if (!this->istargetTx)
+        tuple->mmt_.r_unlock(); // short duration
+
     // ELR
-    if (this->lock_flag)
+    if (USE_LOCK == 2 && this->istargetTx)
     {
         tuple->rlocked.fetch_sub(1);
         tuple->mmt_.r_unlock();
     }
+
     if (this->status_ == Status::aborted)
     {
-        ++res_->local_readphase_counts_;
+        //++res_->local_readphase_counts_;
         goto FINISH_TREAD;
     }
 FINISH_TREAD:
@@ -129,40 +99,29 @@ FINISH_TREAD:
 
 void Transaction::twrite(uint64_t key, std::array<std::byte, DATA_SIZE> write_val)
 {
-    // update local write set
     if (searchWriteSet(key) == true)
         return;
 
     Tuple *tuple;
     tuple = get_tuple(key);
 
-    // If v not in t.writes:
     Version *expected, *desired;
     desired = new Version();
     desired->cstamp_.store(this->txid_, memory_order_release);
 
     memcpy(desired->val_.data(), write_val.data(), DATA_SIZE); // FYI:desired->valにwrite_valをコピー
 
-    //----------------------------------------------------------------
-    // deadlock prevention(no-wait)
-    /*expected = tuple->latest_.load(memory_order_acquire);
-    if (!tuple->mmt_.w_try_lock())
-    {
-        this->status_ = Status::aborted;
-        ++res_->local_wwconflict_counts_;
-        goto FINISH_TWRITE;
-    }*/
-    //----------------------------------------------------------------
-    // deadlock prevention(wait-die)
     for (;;)
     {
         expected = tuple->latest_.load(memory_order_acquire);
         for (auto itr = write_set_.begin(); itr != write_set_.end(); itr++)
         {
+            // w-ronlylock deadlock prevention
             Tuple *tmp = (*itr).tuple_;
             if (tmp->rlocked.load() > 0)
             {
                 this->status_ = Status::aborted;
+                // w-ronlylock deadlock
                 ++res_->local_rdeadlock_abort_counts_;
                 goto FINISH_TWRITE;
             }
@@ -170,42 +129,22 @@ void Transaction::twrite(uint64_t key, std::array<std::byte, DATA_SIZE> write_va
         if (tuple->rlocked.load() > 0)
         {
             desired->locked_flag_ = true;
-            //    this->status_ = Status::aborted;
-            //++res_->local_rdeadlock_abort_counts_;
-            //    goto FINISH_TWRITE;
+            // ronly lockが取られていて待っている状態
+            ++res_->local_traversal_counts_;
             continue;
         }
-
         if (!tuple->mmt_.w_try_lock())
         {
-            //  deadlock prevention for write lock
+            //  w-w deadlock prevention
             if (this->txid_ > expected->cstamp_.load(memory_order_acquire))
             {
                 this->status_ = Status::aborted;
+                // w-w deadlock counts
                 ++res_->local_wdeadlock_abort_counts_;
                 goto FINISH_TWRITE;
             }
-            //----------------------------------------------------------------
-            // deadlock prevention for r-only lock
-            /*if (tuple->rlocked.load() > 0)
-            {
-                // desired->locked_flag_ = true;
-                this->status_ = Status::aborted;
-                ++res_->local_rdeadlock_abort_counts_;
-                goto FINISH_TWRITE;
-            }
-
-            for (auto itr = write_set_.begin(); itr != write_set_.end(); itr++)
-            {
-                Tuple *tmp = (*itr).tuple_;
-                if (tmp->rlocked.load() > 0)
-                {
-                    this->status_ = Status::aborted;
-                    ++res_->local_rdeadlock_abort_counts_;
-                    goto FINISH_TWRITE;
-                }
-            }*/
-            //----------------------------------------------------------------
+            // ronly lockもなくてw-w deadlockもないけどlockが取れない
+            //++res_->local_rdeadlock_abort_counts_;
         }
         else
             break;
@@ -217,18 +156,17 @@ void Transaction::twrite(uint64_t key, std::array<std::byte, DATA_SIZE> write_va
     ssn_twrite(desired, key);
 
     if (this->status_ == Status::aborted)
-        ++res_->local_writephase_counts_;
+        //++res_->local_writephase_counts_;
 
-FINISH_TWRITE:
-    return;
+    FINISH_TWRITE:
+        return;
 }
 
 void Transaction::commit()
 {
-    if (!this->lock_flag)
+    if (!(this->istargetTx && USE_LOCK == 2))
         this->cstamp_ = atomic_fetch_add(&timestampcounter, 1);
 
-    // begin pre-commit
     SsnLock.lock();
 
     ssn_commit();
@@ -246,7 +184,6 @@ void Transaction::commit()
     }
     else
     {
-        // abort or inflight
         if (this->status_ == Status::inFlight)
             cout << "commit error" << endl;
         SsnLock.unlock();
@@ -254,17 +191,21 @@ void Transaction::commit()
     }
 
     // readonlylock unlock
-    if (this->lock_flag == true)
+    if (this->istargetTx)
     {
-        /*for (auto itr = task_set_sorted_.begin(); itr != task_set_sorted_.end(); itr++)
+        if (USE_LOCK == 1)
         {
-            Tuple *tmptuple = get_tuple(*itr);
-            tmptuple->rlocked.fetch_sub(1);
-            tmptuple->mmt_.r_unlock();
-        }*/
-        this->lock_flag = false;
+            for (auto itr = task_set_sorted_.begin(); itr != task_set_sorted_.end(); itr++)
+            {
+                Tuple *tmptuple = get_tuple(*itr);
+                tmptuple->rlocked.fetch_sub(1);
+                tmptuple->mmt_.r_unlock();
+            }
+        }
+        this->istargetTx = false;
         task_set_sorted_.clear();
     }
+
     read_set_.clear();
     write_set_.clear();
     if (this->abortcount_ != 0)
@@ -279,6 +220,9 @@ void Transaction::abort()
 {
     ssn_abort();
 
+    if (this->istargetTx)
+        cout << "error abort" << endl;
+
     for (auto itr = write_set_.begin(); itr != write_set_.end(); ++itr)
     {
         (*itr).ver_->status_.store(Status::aborted, memory_order_release);
@@ -288,15 +232,14 @@ void Transaction::abort()
     write_set_.clear();
     read_set_.clear();
     ++res_->local_abort_counts_;
-    if (isreadonly() == true)
+    if (isreadonly())
     {
-        // res_->local_readonly_abort_counts_++;
         ++this->abortcount_;
         res_->local_scan_abort_counts_++;
     }
 
     // 提案手法: read only transactionのlock
-    if (USE_LOCK == 1 && isreadonly() == true)
+    if (USE_LOCK != 0 && isreadonly() == true)
     {
         // sorting
         assert(task_set_sorted_.empty());
@@ -305,7 +248,7 @@ void Transaction::abort()
         std::sort(task_set_sorted_.begin(), task_set_sorted_.end());
         task_set_sorted_.erase(std::unique(task_set_sorted_.begin(), task_set_sorted_.end()), task_set_sorted_.end());
 
-        // deadlock(between read locks) prevention
+        // lock
         for (auto itr = task_set_sorted_.begin(); itr != task_set_sorted_.end(); itr++)
         {
             Tuple *tmptuple = get_tuple(*itr);
@@ -315,11 +258,10 @@ void Transaction::abort()
                 if (tmptuple->mmt_.r_try_lock())
                     break;
             }
-            // 最適化
-            // this->txid_ = this->cstamp_;
         }
-        this->lock_flag = true;
+        this->istargetTx = true;
         // ELR
-        this->cstamp_aborted = this->cstamp_;
+        if (USE_LOCK == 2)
+            this->cstamp_aborted = this->cstamp_;
     }
 }
