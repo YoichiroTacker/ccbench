@@ -202,16 +202,6 @@ public:
     Task(Ope ope, uint64_t key, std::array<std::byte, DATA_SIZE> write_val) : ope_(ope), key_(key), write_val_(write_val) {}
 };
 
-/*class Vsstamp
-{
-public:
-    uint64_t key_;
-    Version *ver_;
-    uint32_t sstamp_ = UINT32_MAX;
-
-    Vsstamp(uint64_t key, Version *ver, uint32_t sstamp) : key_(key), ver_(ver), sstamp_(sstamp) {}
-};*/
-
 class Transaction
 {
 public:
