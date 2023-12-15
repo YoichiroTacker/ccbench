@@ -208,12 +208,6 @@ void Transaction::commit()
 
     read_set_.clear();
     write_set_.clear();
-    if (this->abortcount_ != 0)
-    {
-        res_->local_additionalabort.push_back(this->abortcount_);
-        this->abortcount_ = 0;
-    }
-    return;
 }
 
 void Transaction::abort()
@@ -231,37 +225,55 @@ void Transaction::abort()
     }
     write_set_.clear();
     read_set_.clear();
-    ++res_->local_abort_counts_;
-    if (isreadonly())
-    {
-        ++this->abortcount_;
-        res_->local_scan_abort_counts_++;
-    }
 
     // 提案手法: read only transactionのlock
     if (USE_LOCK != 0 && isreadonly() == true)
     {
-        // sorting
-        assert(task_set_sorted_.empty());
-        for (int i = 0; i < task_set_.size(); i++)
-            task_set_sorted_.push_back(task_set_.at(i).key_);
-        std::sort(task_set_sorted_.begin(), task_set_sorted_.end());
-        task_set_sorted_.erase(std::unique(task_set_sorted_.begin(), task_set_sorted_.end()), task_set_sorted_.end());
-
-        // lock
-        for (auto itr = task_set_sorted_.begin(); itr != task_set_sorted_.end(); itr++)
+        // repair
+        if (USE_LOCK == 4)
         {
-            Tuple *tmptuple = get_tuple(*itr);
-            tmptuple->rlocked.fetch_add(1);
-            for (;;)
+            task_set_sorted_.clear();
+            for (auto itr = invalidated_read_set_.begin(); itr != invalidated_read_set_.end(); itr++)
             {
-                if (tmptuple->mmt_.r_try_lock())
-                    break;
+                task_set_sorted_.push_back(itr->key_);
+            }
+            std::sort(task_set_sorted_.begin(), task_set_sorted_.end());
+            task_set_sorted_.erase(std::unique(task_set_sorted_.begin(), task_set_sorted_.end()), task_set_sorted_.end());
+            for (auto itr = task_set_sorted_.begin(); itr != task_set_sorted_.end(); itr++)
+            {
+                Tuple *tmptuple = get_tuple(*itr);
+                tmptuple->rlocked.fetch_add(1);
+                for (;;)
+                {
+                    if (tmptuple->mmt_.r_try_lock())
+                        break;
+                }
             }
         }
-        this->istargetTx = true;
-        // ELR
-        if (USE_LOCK == 2)
-            this->cstamp_aborted = this->cstamp_;
+        else
+        {
+            // sorting
+            assert(task_set_sorted_.empty());
+            for (int i = 0; i < task_set_.size(); i++)
+                task_set_sorted_.push_back(task_set_.at(i).key_);
+            std::sort(task_set_sorted_.begin(), task_set_sorted_.end());
+            task_set_sorted_.erase(std::unique(task_set_sorted_.begin(), task_set_sorted_.end()), task_set_sorted_.end());
+
+            // lock
+            for (auto itr = task_set_sorted_.begin(); itr != task_set_sorted_.end(); itr++)
+            {
+                Tuple *tmptuple = get_tuple(*itr);
+                tmptuple->rlocked.fetch_add(1);
+                for (;;)
+                {
+                    if (tmptuple->mmt_.r_try_lock())
+                        break;
+                }
+            }
+            this->istargetTx = true;
+            // ELR
+            if (USE_LOCK == 2)
+                this->ex_cstamp_ = this->cstamp_;
+        }
     }
 }
