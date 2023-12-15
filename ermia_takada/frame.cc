@@ -102,8 +102,8 @@ std::mutex SsnLock; // giant lock
 void makeTask(std::vector<Task> &tasks, Xoroshiro128Plus &rnd, FastZipf &zipf, size_t thid)
 {
     tasks.clear();
-    // if ((rnd.next() % 100) < ronly_ratio) // scan or update by ratio
-    if (thid != 0) // scan or update by thread ID
+    if ((rnd.next() % 100) < ronly_ratio) // scan or update by ratio
+    // if (thid != 0) // scan or update by thread ID
     {
         std::set<uint64_t> keys;
         for (size_t i = 0; i < max_ope_readonly; ++i)
@@ -190,7 +190,7 @@ void makeDB()
     }
 }
 
-void viewtask(vector<Task> &tasks)
+/*void viewtask(vector<Task> &tasks)
 {
     for (auto itr = tasks.begin(); itr != tasks.end(); itr++)
     {
@@ -204,7 +204,7 @@ void viewtask(vector<Task> &tasks)
         }
     }
     cout << endl;
-}
+}*/
 
 void worker(size_t thid, char &ready, const bool &start, const bool &quit)
 {
@@ -223,7 +223,7 @@ void worker(size_t thid, char &ready, const bool &start, const bool &quit)
 
     while (quit == false)
     {
-    START:
+        // START:
         makeTask(trans.task_set_, rnd, zipf, thid);
         // viewtask(trans.task_set_);
 
@@ -253,8 +253,6 @@ void worker(size_t thid, char &ready, const bool &start, const bool &quit)
             goto COMMIT;
         else if (trans.status_ == Status::aborted)
             goto ABORT;
-        else
-            cout << "genin?" << endl;
 
     COMMIT:
         myres.local_commit_counts_++;
@@ -265,14 +263,10 @@ void worker(size_t thid, char &ready, const bool &start, const bool &quit)
             myres.local_additionalabort.push_back(trans.abortcount_);
             trans.abortcount_ = 0;
         }
-        goto START;
+        // goto START;
+        continue;
 
     ABORT:
-        if (trans.isreadonly())
-            assert(!trans.read_set_.empty());
-        if (trans.isreadonly() && trans.isearlyaborted == false && !trans.task_set_sorted_.empty())
-            assert(trans.validated_read_set_.size() + trans.read_set_.size() == trans.task_set_.size());
-
         trans.abort();
         myres.local_abort_counts_++;
         if (trans.task_set_.size() == max_ope_readonly)
@@ -281,19 +275,13 @@ void worker(size_t thid, char &ready, const bool &start, const bool &quit)
             trans.abortcount_++;
         }
         if (trans.istargetTx == true)
-        {
             goto REPAIR;
-        }
         else
-        {
             goto RETRY;
-        }
 
     REPAIR:
         if (quit == true)
             break;
-
-        assert(trans.isreadonly() == true);
 
         trans.tbegin();
         trans.repair_read();
@@ -304,31 +292,23 @@ void worker(size_t thid, char &ready, const bool &start, const bool &quit)
         {
             trans.tread((*itr).key_);
             if (trans.status_ == Status::aborted)
-            {
                 break;
-            }
         }
         if (trans.status_ == Status::aborted)
         {
             trans.read_set_.clear();
+            trans.abortcount_++;
             assert(trans.validated_read_set_.size() + trans.task_set_sorted_.size() == trans.task_set_.size());
             goto REPAIR;
         }
         assert(trans.validated_read_set_.size() + trans.read_set_.size() == trans.task_set_.size());
-        assert(trans.status_ == Status::inFlight);
         trans.commit();
 
         if (trans.status_ == Status::committed)
-        {
             goto COMMIT;
-        }
         else if (trans.status_ == Status::aborted)
-        {
-            assert(!trans.read_set_.empty());
-            assert(trans.validated_read_set_.size() + trans.read_set_.size() == trans.task_set_.size());
             goto ABORT;
-        }
-        goto START;
+        // goto START;
     }
     return;
 }

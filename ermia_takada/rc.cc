@@ -169,11 +169,8 @@ void Transaction::abort()
         this->ex_cstamp_ = this->cstamp_;
         this->istargetTx = true;
         //  1回目のabortの場合
-        if (validated_read_set_.empty())
+        if (validated_read_set_.empty() && task_set_sorted_.empty())
         {
-            assert(task_set_sorted_.empty());
-            assert(validated_read_set_.empty());
-
             for (auto itr = read_set_.begin(); itr != read_set_.end(); itr++)
             {
                 if (this->pstamp_ < (*itr).ver_->sstamp_.load(memory_order_acquire))

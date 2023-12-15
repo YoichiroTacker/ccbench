@@ -61,9 +61,7 @@ void Transaction::ssn_commit()
     // assert(this->sstamp_ == this->cstamp_);
 
     for (auto itr = read_set_.begin(); itr != read_set_.end(); ++itr)
-    {
         this->sstamp_ = min(this->sstamp_, (*itr).ver_->sstamp_.load(memory_order_acquire));
-    }
 
     for (auto itr = write_set_.begin(); itr != write_set_.end(); ++itr)
     {
@@ -118,9 +116,7 @@ void Transaction::ssn_repair_commit()
         return;
 
     for (auto itr = this->read_set_.begin(); itr != read_set_.end(); itr++)
-    {
         this->sstamp_ = min(this->sstamp_, (*itr).ver_->sstamp_.load(memory_order_acquire));
-    }
 
     if (pstamp_ < sstamp_)
         this->status_ = Status::committed;
