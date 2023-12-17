@@ -96,6 +96,8 @@ FINISH_TWRITE:
 
 void Transaction::repair_read()
 {
+    // validate repaired read set
+    assert(validated_read_set_.size() + task_set_sorted_.size() == task_set_.size());
     vector<Operation>::iterator itr = validated_read_set_.begin();
     while (itr != validated_read_set_.end())
     {
@@ -106,6 +108,15 @@ void Transaction::repair_read()
         }
         else
             ++itr;
+    }
+    assert(validated_read_set_.size() + task_set_sorted_.size() == task_set_.size());
+
+    // retry aborted operation
+    for (auto itr = task_set_sorted_.begin(); itr != task_set_sorted_.end(); ++itr)
+    {
+        tread((*itr).key_);
+        if (status_ == Status::aborted)
+            break;
     }
 }
 
@@ -164,36 +175,21 @@ void Transaction::abort()
     }
 
     // 提案手法 transaction repair
-    if (USE_LOCK == 1 && isreadonly() && isearlyaborted == false && !read_set_.empty())
+    if (USE_LOCK == 1 && (istargetTx || isreadonly()) && isearlyaborted == false && !read_set_.empty())
     {
         this->ex_cstamp_ = this->cstamp_;
         this->istargetTx = true;
-        //  1回目のabortの場合
-        if (validated_read_set_.empty() && task_set_sorted_.empty())
+
+        if (!task_set_sorted_.empty())
+            task_set_sorted_.clear(); // 2回目以降のabortの場合
+        for (auto itr = read_set_.begin(); itr != read_set_.end(); itr++)
         {
-            for (auto itr = read_set_.begin(); itr != read_set_.end(); itr++)
-            {
-                if (this->pstamp_ < (*itr).ver_->sstamp_.load(memory_order_acquire))
-                    validated_read_set_.push_back(*itr);
-                else
-                    task_set_sorted_.emplace_back(Ope::READ, (*itr).key_);
-            }
-            assert(validated_read_set_.size() + task_set_sorted_.size() == task_set_.size());
+            if (this->pstamp_ < (*itr).ver_->sstamp_.load(memory_order_acquire))
+                validated_read_set_.push_back(*itr);
+            else
+                task_set_sorted_.emplace_back(Ope::READ, (*itr).key_);
         }
-        else
-        {
-            // 2回目以降のabortの場合
-            assert(validated_read_set_.size() + read_set_.size() == task_set_.size());
-            task_set_sorted_.clear();
-            for (auto itr = read_set_.begin(); itr != read_set_.end(); itr++)
-            {
-                if (this->pstamp_ < (*itr).ver_->sstamp_)
-                    validated_read_set_.push_back(*itr);
-                else
-                    task_set_sorted_.emplace_back(Ope::READ, (*itr).key_);
-            }
-            assert(validated_read_set_.size() + task_set_sorted_.size() == task_set_.size());
-        }
+        assert(validated_read_set_.size() + task_set_sorted_.size() == task_set_.size());
     }
     write_set_.clear();
     read_set_.clear();

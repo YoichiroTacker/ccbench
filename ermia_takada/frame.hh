@@ -272,6 +272,10 @@ public:
     void repair_read();
 
     void ssn_repair_commit();
+
+    void utils_abort();
+
+    void utils_commit();
 };
 
 void print_mode();

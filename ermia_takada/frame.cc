@@ -175,6 +175,28 @@ bool Transaction::isreadonly()
     return true;
 }
 
+void Transaction::utils_abort()
+{
+    ++res_->local_abort_counts_;
+    if (task_set_.size() == max_ope_readonly)
+    {
+        ++res_->local_scan_abort_counts_;
+        abortcount_++;
+    }
+}
+
+void Transaction::utils_commit()
+{
+    ++res_->local_commit_counts_;
+    if (task_set_.size() == max_ope_readonly)
+        ++res_->local_scan_commit_counts_;
+    if (abortcount_ != 0)
+    {
+        res_->local_additionalabort.push_back(abortcount_);
+        abortcount_ = 0;
+    }
+}
+
 void makeDB()
 {
     [[maybe_unused]] auto err = posix_memalign((void **)&Table, PAGE_SIZE, (tuple_num) * sizeof(Tuple));
@@ -223,7 +245,6 @@ void worker(size_t thid, char &ready, const bool &start, const bool &quit)
 
     while (quit == false)
     {
-        // START:
         makeTask(trans.task_set_, rnd, zipf, thid);
         // viewtask(trans.task_set_);
 
@@ -231,84 +252,50 @@ void worker(size_t thid, char &ready, const bool &start, const bool &quit)
         if (quit == true)
             break;
 
-        trans.tbegin();
-
-        for (auto itr = trans.task_set_.begin(); itr != trans.task_set_.end(); ++itr)
+        if (trans.istargetTx)
         {
-            if ((*itr).ope_ == Ope::READ)
-                trans.tread((*itr).key_);
-            else if ((*itr).ope_ == Ope::WRITE)
-                trans.twrite((*itr).key_, (*itr).write_val_);
+            trans.tbegin();
+            trans.repair_read();
 
-            if (trans.status_ == Status::aborted)
+            while (trans.status_ == Status::aborted)
             {
-                trans.isearlyaborted = true;
-                goto ABORT;
+                trans.read_set_.clear();
+                trans.utils_abort();
+
+                trans.tbegin();
+                trans.repair_read();
+            }
+            assert(trans.validated_read_set_.size() + trans.read_set_.size() == trans.task_set_.size());
+        }
+        else
+        {
+            trans.tbegin();
+            for (auto itr = trans.task_set_.begin(); itr != trans.task_set_.end(); ++itr)
+            {
+                if ((*itr).ope_ == Ope::READ)
+                    trans.tread((*itr).key_);
+                else if ((*itr).ope_ == Ope::WRITE)
+                    trans.twrite((*itr).key_, (*itr).write_val_);
+
+                if (trans.status_ == Status::aborted)
+                {
+                    trans.isearlyaborted = true;
+                    trans.abort();
+                    trans.utils_abort();
+                    goto RETRY;
+                }
             }
         }
-        assert(trans.isearlyaborted == false);
-        // assert(!trans.read_set_.empty());
         trans.commit();
+
         if (trans.status_ == Status::committed)
-            goto COMMIT;
+            trans.utils_commit();
         else if (trans.status_ == Status::aborted)
-            goto ABORT;
-
-    COMMIT:
-        myres.local_commit_counts_++;
-        if (trans.task_set_.size() == max_ope_readonly)
-            myres.local_scan_commit_counts_++;
-        if (trans.abortcount_ != 0)
         {
-            myres.local_additionalabort.push_back(trans.abortcount_);
-            trans.abortcount_ = 0;
-        }
-        // goto START;
-        continue;
-
-    ABORT:
-        trans.abort();
-        myres.local_abort_counts_++;
-        if (trans.task_set_.size() == max_ope_readonly)
-        {
-            myres.local_scan_abort_counts_++;
-            trans.abortcount_++;
-        }
-        if (trans.istargetTx == true)
-            goto REPAIR;
-        else
+            trans.abort();
+            trans.utils_abort();
             goto RETRY;
-
-    REPAIR:
-        if (quit == true)
-            break;
-
-        trans.tbegin();
-        trans.repair_read();
-
-        assert(trans.validated_read_set_.size() + trans.task_set_sorted_.size() == trans.task_set_.size());
-
-        for (auto itr = trans.task_set_sorted_.begin(); itr != trans.task_set_sorted_.end(); ++itr)
-        {
-            trans.tread((*itr).key_);
-            if (trans.status_ == Status::aborted)
-                break;
         }
-        if (trans.status_ == Status::aborted)
-        {
-            trans.read_set_.clear();
-            trans.abortcount_++;
-            assert(trans.validated_read_set_.size() + trans.task_set_sorted_.size() == trans.task_set_.size());
-            goto REPAIR;
-        }
-        assert(trans.validated_read_set_.size() + trans.read_set_.size() == trans.task_set_.size());
-        trans.commit();
-
-        if (trans.status_ == Status::committed)
-            goto COMMIT;
-        else if (trans.status_ == Status::aborted)
-            goto ABORT;
-        // goto START;
     }
     return;
 }
