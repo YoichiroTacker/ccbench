@@ -218,10 +218,10 @@ public:
     vector<Operation> read_set_;  // write set
     vector<Operation> write_set_; // read set
     vector<Task> task_set_;       // 生成されたtransaction
-    // vector<int> task_set_sorted_;
-    vector<Task> task_set_sorted_;
+    vector<int> task_set_sorted_; // for rcl+robust safe retry
 
     // repair
+    vector<Task> retrying_task_set_;
     vector<Operation> validated_read_set_;
     bool isearlyaborted = false;
 
@@ -231,12 +231,12 @@ public:
 
     Transaction(uint8_t thid, Result *res) : thid_(thid), res_(res)
     {
-        // read_set_.reserve(max_ope_readonly);
+        read_set_.reserve(max_ope_readonly);
         write_set_.reserve(max_ope);
         task_set_.reserve(max_ope_readonly);
         task_set_sorted_.reserve(max_ope_readonly);
         // repair
-        // validated_read_set_.reserve(max_ope_readonly);
+        validated_read_set_.reserve(max_ope_readonly);
     }
 
     bool searchReadSet(unsigned int key);

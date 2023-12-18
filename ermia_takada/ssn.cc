@@ -27,8 +27,8 @@ void Transaction::ssn_tread(Version *ver, uint64_t key)
     verify_exclusion_or_abort();
 
     // ELR
-    if (this->istargetTx == true && USE_LOCK == 2)
-        ver->pstamp_.store(max(this->ex_cstamp_, ver->pstamp_.load(memory_order_acquire)), memory_order_release);
+    /*if (this->istargetTx == true && USE_LOCK == 2)
+        ver->pstamp_.store(max(this->ex_cstamp_, ver->pstamp_.load(memory_order_acquire)), memory_order_release);*/
 }
 
 void Transaction::ssn_twrite(Version *desired, uint64_t key)
@@ -36,10 +36,10 @@ void Transaction::ssn_twrite(Version *desired, uint64_t key)
     // Insert my tid for ver->prev_->sstamp_
     desired->prev_->sstamp_.store(this->txid_, memory_order_release);
 
-    if (desired->locked_flag_ && USE_LOCK == 1)
+    /*if (desired->locked_flag_ && USE_LOCK == 1)
         this->pstamp_ = max(this->pstamp_, desired->prev_->pstamp_for_rlock_.load(memory_order_acquire));
-    else
-        this->pstamp_ = max(this->pstamp_, desired->prev_->pstamp_.load(memory_order_acquire));
+    else*/
+    this->pstamp_ = max(this->pstamp_, desired->prev_->pstamp_.load(memory_order_acquire));
 
     write_set_.emplace_back(key, desired, &Table[key]);
 
@@ -65,10 +65,10 @@ void Transaction::ssn_commit()
 
     for (auto itr = write_set_.begin(); itr != write_set_.end(); ++itr)
     {
-        if ((*itr).ver_->locked_flag_ && USE_LOCK == 1)
-            this->pstamp_ = max(this->pstamp_, (*itr).ver_->prev_->pstamp_for_rlock_.load(memory_order_acquire));
-        else
-            this->pstamp_ = max(this->pstamp_, (*itr).ver_->prev_->pstamp_.load(memory_order_acquire));
+        /* if ((*itr).ver_->locked_flag_ && USE_LOCK == 1)
+             this->pstamp_ = max(this->pstamp_, (*itr).ver_->prev_->pstamp_for_rlock_.load(memory_order_acquire));
+         else*/
+        this->pstamp_ = max(this->pstamp_, (*itr).ver_->prev_->pstamp_.load(memory_order_acquire));
     }
 
     if (pstamp_ < sstamp_)
@@ -76,7 +76,7 @@ void Transaction::ssn_commit()
     else
     {
         status_ = Status::aborted;
-        ++res_->local_commitphase_counts_;
+        //++res_->local_commitphase_counts_;
         return;
     }
 
@@ -84,8 +84,8 @@ void Transaction::ssn_commit()
     {
         (*itr).ver_->pstamp_.store((max((*itr).ver_->pstamp_.load(memory_order_acquire), this->cstamp_)), memory_order_release);
         // extention of forced forward edge
-        if (USE_LOCK == 1 && this->istargetTx)
-            (*itr).ver_->pstamp_for_rlock_.store(this->pstamp_);
+        /*if (USE_LOCK == 1 && this->istargetTx)
+            (*itr).ver_->pstamp_for_rlock_.store(this->pstamp_);*/
     }
 
     for (auto itr = write_set_.begin(); itr != write_set_.end(); ++itr)
@@ -123,7 +123,7 @@ void Transaction::ssn_repair_commit()
     else
     {
         status_ = Status::aborted;
-        ++res_->local_commitphase_counts_;
+        //++res_->local_commitphase_counts_;
         return;
     }
 

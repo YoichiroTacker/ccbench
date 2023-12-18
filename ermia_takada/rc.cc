@@ -24,7 +24,7 @@ void Transaction::tbegin()
 void Transaction::tread(uint64_t key)
 {
     if (searchWriteSet(key) == true || searchReadSet(key) == true)
-        goto FINISH_TREAD;
+        return;
 
     Tuple *tuple;
     tuple = get_tuple(key);
@@ -43,10 +43,8 @@ void Transaction::tread(uint64_t key)
     {
         //++res_->local_readphase_counts_;
         // this->isearlyaborted = true;
-        goto FINISH_TREAD;
+        return;
     }
-FINISH_TREAD:
-    return;
 }
 
 void Transaction::twrite(uint64_t key, std::array<std::byte, DATA_SIZE> write_val)
@@ -74,7 +72,7 @@ void Transaction::twrite(uint64_t key, std::array<std::byte, DATA_SIZE> write_va
                 this->status_ = Status::aborted;
                 // w-w deadlock counts
                 ++res_->local_wdeadlock_abort_counts_;
-                goto FINISH_TWRITE;
+                return;
             }
         }
         else
@@ -89,30 +87,29 @@ void Transaction::twrite(uint64_t key, std::array<std::byte, DATA_SIZE> write_va
     if (this->status_ == Status::aborted)
         //++res_->local_writephase_counts_;
         this->isearlyaborted = true;
-
-FINISH_TWRITE:
-    return;
 }
 
 void Transaction::repair_read()
 {
+    assert(validated_read_set_.size() + retrying_task_set_.size() == task_set_.size());
+
     // validate repaired read set
-    assert(validated_read_set_.size() + task_set_sorted_.size() == task_set_.size());
+    // validated_read_set_の各データについて、更新されていないかどうか確かめる
     vector<Operation>::iterator itr = validated_read_set_.begin();
     while (itr != validated_read_set_.end())
     {
         if ((*itr).ver_->sstamp_.load(memory_order_acquire) != UINT32_MAX)
         {
-            task_set_sorted_.emplace_back(Ope::READ, (*itr).key_);
+            retrying_task_set_.emplace_back(Ope::READ, (*itr).key_);
             validated_read_set_.erase(itr);
         }
         else
             ++itr;
     }
-    assert(validated_read_set_.size() + task_set_sorted_.size() == task_set_.size());
+    assert(validated_read_set_.size() + retrying_task_set_.size() == task_set_.size());
 
     // retry aborted operation
-    for (auto itr = task_set_sorted_.begin(); itr != task_set_sorted_.end(); ++itr)
+    for (auto itr = retrying_task_set_.begin(); itr != retrying_task_set_.end(); ++itr)
     {
         tread((*itr).key_);
         if (status_ == Status::aborted)
@@ -127,9 +124,7 @@ void Transaction::commit()
     SsnLock.lock();
 
     if (istargetTx == true)
-    {
         ssn_repair_commit();
-    }
     else
         ssn_commit();
 
@@ -146,21 +141,16 @@ void Transaction::commit()
     }
     else
     {
-        if (this->status_ == Status::inFlight)
-            cout << "commit error" << endl;
         SsnLock.unlock();
         return;
     }
     read_set_.clear();
     write_set_.clear();
 
-    if (this->istargetTx == true && this->status_ == Status::committed)
-    {
-        istargetTx = false;
-    }
+    istargetTx = false;
     validated_read_set_.clear();
     isearlyaborted = false;
-    task_set_sorted_.clear();
+    retrying_task_set_.clear();
 }
 
 void Transaction::abort()
@@ -180,16 +170,16 @@ void Transaction::abort()
         this->ex_cstamp_ = this->cstamp_;
         this->istargetTx = true;
 
-        if (!task_set_sorted_.empty())
-            task_set_sorted_.clear(); // 2回目以降のabortの場合
+        if (!retrying_task_set_.empty())
+            retrying_task_set_.clear(); // 2回目以降のabortの場合
         for (auto itr = read_set_.begin(); itr != read_set_.end(); itr++)
         {
             if (this->pstamp_ < (*itr).ver_->sstamp_.load(memory_order_acquire))
                 validated_read_set_.push_back(*itr);
             else
-                task_set_sorted_.emplace_back(Ope::READ, (*itr).key_);
+                retrying_task_set_.emplace_back(Ope::READ, (*itr).key_);
         }
-        assert(validated_read_set_.size() + task_set_sorted_.size() == task_set_.size());
+        assert(validated_read_set_.size() + retrying_task_set_.size() == task_set_.size());
     }
     write_set_.clear();
     read_set_.clear();
