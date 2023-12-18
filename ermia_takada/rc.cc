@@ -5,13 +5,17 @@ using namespace std;
 
 extern std::atomic<uint64_t> timestampcounter;
 extern std::mutex SsnLock;
-int USE_LOCK = 0;
+extern enum Compilemode MODE;
 
 void print_mode()
 {
-    if (USE_LOCK == 0)
+    /*if (USE_LOCK == 0)
         cout << "this result is executed by RC+SSN" << endl;
     else if (USE_LOCK == 1)
+        cout << "this result is executed by RC + SSN + Repair" << endl;*/
+    if (MODE == Compilemode::RC)
+        cout << "this result is executed by RC+SSN" << endl;
+    else if (MODE == Compilemode::RC_Repair)
         cout << "this result is executed by RC + SSN + Repair" << endl;
 }
 
@@ -165,7 +169,8 @@ void Transaction::abort()
     }
 
     // 提案手法 transaction repair
-    if (USE_LOCK == 1 && (istargetTx || isreadonly()) && isearlyaborted == false && !read_set_.empty())
+    // if (USE_LOCK == 1 && (istargetTx || isreadonly()) && isearlyaborted == false && !read_set_.empty())
+    if (MODE == Compilemode::RC_Repair && (istargetTx || isreadonly()) && isearlyaborted == false && !read_set_.empty())
     {
         this->ex_cstamp_ = this->cstamp_;
         this->istargetTx = true;

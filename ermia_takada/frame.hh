@@ -57,6 +57,15 @@ public:
     void addLocalAllResult(const Result &other);
 };
 
+enum class Compilemode : uint8_t
+{
+    RC,
+    RC_Repair,
+    RCL,
+    RCL_Saferetry,
+    RCL_ELR,
+};
+
 enum class Status : uint8_t
 {
     inFlight,

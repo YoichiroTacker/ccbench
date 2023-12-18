@@ -1,7 +1,7 @@
 #include "frame.hh"
 
 using namespace std;
-extern int USE_LOCK;
+enum Compilemode MODE;
 
 void Result::displayAllResult(double time)
 {
@@ -347,9 +347,23 @@ void worker(size_t thid, char &ready, const bool &start, const bool &quit)
 
 int main(int argc, char *argv[])
 {
-    auto use_lock = std::getenv("USE_LOCK");
-    if (use_lock)
-        USE_LOCK = atoi(use_lock);
+    auto mode_str = std::getenv("MODE");
+    if (mode_str)
+    {
+        std::string mode(mode_str);
+        if (mode == "RC")
+            MODE = Compilemode::RC;
+        else if (mode == "RC_Repair")
+            MODE = Compilemode::RC_Repair;
+        else if (mode == "RCL")
+            MODE = Compilemode::RCL;
+        else if (mode == "RCL_Saferetry")
+            MODE = Compilemode::RCL_Saferetry;
+        else if (mode == "RCL_ELR")
+            MODE = Compilemode::RCL_ELR;
+        else
+            std::cerr << "Invalid mode: " << mode << std::endl;
+    }
 
     print_mode();
     makeDB();
