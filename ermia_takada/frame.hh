@@ -64,6 +64,8 @@ enum class Compilemode : uint8_t
     RCL,
     RCL_Saferetry,
     RCL_ELR,
+    SI,
+    SI_Repair,
 };
 
 enum class Status : uint8_t

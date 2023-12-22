@@ -361,6 +361,10 @@ int main(int argc, char *argv[])
             MODE = Compilemode::RCL_Saferetry;
         else if (mode == "RCL_ELR")
             MODE = Compilemode::RCL_ELR;
+        else if (mode == "SI")
+            MODE = Compilemode::SI;
+        else if (mode == "SI_Repair")
+            MODE = Compilemode::SI_Repair;
         else
             std::cerr << "Invalid mode: " << mode << std::endl;
     }

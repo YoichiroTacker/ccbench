@@ -9,10 +9,6 @@ extern enum Compilemode MODE;
 
 void print_mode()
 {
-    /*if (USE_LOCK == 0)
-        cout << "this result is executed by RC+SSN" << endl;
-    else if (USE_LOCK == 1)
-        cout << "this result is executed by RC + SSN + Repair" << endl;*/
     if (MODE == Compilemode::RC)
         cout << "this result is executed by RC+SSN" << endl;
     else if (MODE == Compilemode::RC_Repair)
@@ -127,10 +123,7 @@ void Transaction::commit()
 
     SsnLock.lock();
 
-    if (istargetTx == true)
-        ssn_repair_commit();
-    else
-        ssn_commit();
+    ssn_commit();
 
     if (this->status_ == Status::committed)
     {
