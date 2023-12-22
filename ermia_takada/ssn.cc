@@ -102,45 +102,6 @@ void Transaction::ssn_commit()
     }
 }
 
-/*void Transaction::ssn_repair_commit()
-{
-    assert(validated_read_set_.size() + read_set_.size() == task_set_.size());
-    vector<Operation>::iterator itr = validated_read_set_.begin();
-    while (itr != validated_read_set_.end())
-    {
-        if ((*itr).ver_->sstamp_.load(memory_order_acquire) != UINT32_MAX)
-        {
-            this->status_ = Status::aborted;
-            read_set_.push_back(*itr);
-            validated_read_set_.erase(itr);
-        }
-        else
-            ++itr;
-    }
-    assert(validated_read_set_.size() + read_set_.size() == task_set_.size());
-
-    if (this->status_ == Status::aborted)
-        return;
-
-    for (auto itr = this->read_set_.begin(); itr != read_set_.end(); itr++)
-        this->sstamp_ = min(this->sstamp_, (*itr).ver_->sstamp_.load(memory_order_acquire));
-
-    if (pstamp_ < sstamp_)
-        this->status_ = Status::committed;
-    else
-    {
-        status_ = Status::aborted;
-        //++res_->local_commitphase_counts_;
-        return;
-    }
-
-    for (auto itr = validated_read_set_.begin(); itr != validated_read_set_.end(); ++itr)
-        (*itr).ver_->pstamp_.store((max((*itr).ver_->pstamp_.load(memory_order_acquire), this->cstamp_)), memory_order_release);
-
-    for (auto itr = read_set_.begin(); itr != read_set_.end(); ++itr)
-        (*itr).ver_->pstamp_.store((max((*itr).ver_->pstamp_.load(memory_order_acquire), this->cstamp_)), memory_order_release);
-}*/
-
 void Transaction::ssn_abort()
 {
     for (auto itr = write_set_.begin(); itr != write_set_.end(); ++itr)
