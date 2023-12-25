@@ -5,15 +5,15 @@ using namespace std;
 
 extern std::atomic<uint64_t> timestampcounter;
 extern std::mutex SsnLock;
-int USE_LOCK = 0;
+extern enum Compilemode MODE;
 
 void print_mode()
 {
-    if (USE_LOCK == 0)
+    if (MODE == Compilemode::RCL)
         cout << "this result is executed by RCL + SSN" << endl;
-    else if (USE_LOCK == 1)
+    else if (MODE == Compilemode::RCL_Saferetry)
         cout << "this result is executed by RCL + SSN + Robust Safe Retry" << endl;
-    else if (USE_LOCK == 2)
+    else if (MODE == Compilemode::RCL_ELR)
         cout << "this result is executed by RCL + SSN with ELR" << endl;
 }
 
@@ -23,7 +23,7 @@ void Transaction::tbegin()
     ssn_tbegin();
 
     // ELR
-    if (USE_LOCK == 2 && this->istargetTx)
+    if (MODE == Compilemode::RCL_ELR && this->istargetTx)
         this->cstamp_ = atomic_fetch_add(&timestampcounter, 1);
 }
 
@@ -82,7 +82,7 @@ void Transaction::tread(uint64_t key)
         tuple->mmt_.r_unlock(); // short duration
 
     // ELR
-    if (USE_LOCK == 2 && this->istargetTx)
+    if (MODE == Compilemode::RCL_ELR && this->istargetTx)
     {
         tuple->rlocked.fetch_sub(1);
         tuple->mmt_.r_unlock();
@@ -164,7 +164,7 @@ void Transaction::twrite(uint64_t key, std::array<std::byte, DATA_SIZE> write_va
 
 void Transaction::commit()
 {
-    if (!(this->istargetTx && USE_LOCK == 2))
+    if (!(this->istargetTx && MODE == Compilemode::RCL_ELR))
         this->cstamp_ = atomic_fetch_add(&timestampcounter, 1);
 
     SsnLock.lock();
@@ -193,7 +193,7 @@ void Transaction::commit()
     // readonlylock unlock
     if (this->istargetTx)
     {
-        if (USE_LOCK == 1)
+        if (MODE == Compilemode::RCL_Saferetry)
         {
             for (auto itr = task_set_sorted_.begin(); itr != task_set_sorted_.end(); itr++)
             {
@@ -208,12 +208,6 @@ void Transaction::commit()
 
     read_set_.clear();
     write_set_.clear();
-    if (this->abortcount_ != 0)
-    {
-        res_->local_additionalabort.push_back(this->abortcount_);
-        this->abortcount_ = 0;
-    }
-    return;
 }
 
 void Transaction::abort()
@@ -231,15 +225,9 @@ void Transaction::abort()
     }
     write_set_.clear();
     read_set_.clear();
-    ++res_->local_abort_counts_;
-    if (isreadonly())
-    {
-        ++this->abortcount_;
-        res_->local_scan_abort_counts_++;
-    }
 
     // 提案手法: read only transactionのlock
-    if (USE_LOCK != 0 && isreadonly() == true)
+    if (MODE != Compilemode::RCL && isreadonly() == true)
     {
         // sorting
         assert(task_set_sorted_.empty());
@@ -261,7 +249,7 @@ void Transaction::abort()
         }
         this->istargetTx = true;
         // ELR
-        if (USE_LOCK == 2)
-            this->cstamp_aborted = this->cstamp_;
+        if (MODE == Compilemode::RCL_ELR)
+            this->ex_cstamp_ = this->cstamp_;
     }
 }

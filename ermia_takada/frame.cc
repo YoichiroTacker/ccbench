@@ -1,7 +1,7 @@
 #include "frame.hh"
 
 using namespace std;
-extern int USE_LOCK;
+enum Compilemode MODE;
 
 void Result::displayAllResult(double time)
 {
@@ -23,7 +23,7 @@ void Result::displayAllResult(double time)
          << "\tupdate:" << ave_rate_update << ")" << endl;
 
     // count the number of recursing abort
-    /*vector<int> tmp;
+    vector<int> tmp;
     tmp = total_additionalabort;
     std::sort(tmp.begin(), tmp.end());
     tmp.erase(std::unique(tmp.begin(), tmp.end()), tmp.end());
@@ -31,7 +31,7 @@ void Result::displayAllResult(double time)
     {
         size_t count = std::count(total_additionalabort.begin(), total_additionalabort.end(), *itr);
         cout << *itr << " " << count << endl;
-    }*/
+    }
 
     //  cout << "latency[ns]:\t\t\t" << powl(10.0, 9.0) / result * thread_num << endl;
 
@@ -54,7 +54,7 @@ void Result::addLocalAllResult(const Result &other)
     // total_wwconflict_counts_ += other.local_wwconflict_counts_;
     total_traversal_counts_ += other.local_traversal_counts_;
     // total_readonly_abort_counts_ += other.local_readonly_abort_counts_;
-    // total_additionalabort.insert(total_additionalabort.end(), other.local_additionalabort.begin(), other.local_additionalabort.end());
+    total_additionalabort.insert(total_additionalabort.end(), other.local_additionalabort.begin(), other.local_additionalabort.end());
     total_rdeadlock_abort_counts_ += other.local_rdeadlock_abort_counts_;
     total_wdeadlock_abort_counts_ += other.local_wdeadlock_abort_counts_;
     total_scan_abort_counts_ += other.local_scan_abort_counts_;
@@ -102,8 +102,8 @@ std::mutex SsnLock; // giant lock
 void makeTask(std::vector<Task> &tasks, Xoroshiro128Plus &rnd, FastZipf &zipf, size_t thid)
 {
     tasks.clear();
-    // if ((rnd.next() % 100) < ronly_ratio) // scan or update by ratio
-    if (thid != 0) // scan or update by thread ID
+    if ((rnd.next() % 100) < ronly_ratio) // scan or update by ratio
+    // if (thid != 0) // scan or update by thread ID
     {
         std::set<uint64_t> keys;
         for (size_t i = 0; i < max_ope_readonly; ++i)
@@ -175,6 +175,28 @@ bool Transaction::isreadonly()
     return true;
 }
 
+void Transaction::utils_abort()
+{
+    ++res_->local_abort_counts_;
+    if (task_set_.size() == max_ope_readonly)
+    {
+        ++res_->local_scan_abort_counts_;
+        abortcount_++;
+    }
+}
+
+void Transaction::utils_commit()
+{
+    ++res_->local_commit_counts_;
+    if (task_set_.size() == max_ope_readonly)
+        ++res_->local_scan_commit_counts_;
+    if (abortcount_ != 0)
+    {
+        res_->local_additionalabort.push_back(abortcount_);
+        abortcount_ = 0;
+    }
+}
+
 void makeDB()
 {
     [[maybe_unused]] auto err = posix_memalign((void **)&Table, PAGE_SIZE, (tuple_num) * sizeof(Tuple));
@@ -230,30 +252,48 @@ void worker(size_t thid, char &ready, const bool &start, const bool &quit)
         if (quit == true)
             break;
 
-        trans.tbegin();
-        for (auto itr = trans.task_set_.begin(); itr != trans.task_set_.end();
-             ++itr)
+        if (trans.istargetTx)
         {
-            if ((*itr).ope_ == Ope::READ)
-                trans.tread((*itr).key_);
-            else if ((*itr).ope_ == Ope::WRITE)
-                trans.twrite((*itr).key_, (*itr).write_val_);
-            if (trans.status_ == Status::aborted)
+            trans.tbegin();
+            trans.repair_read();
+
+            while (trans.status_ == Status::aborted)
             {
-                trans.abort();
-                goto RETRY;
+                trans.read_set_.clear();
+                trans.utils_abort();
+
+                trans.tbegin();
+                trans.repair_read();
+            }
+            assert(trans.validated_read_set_.size() + trans.read_set_.size() == trans.task_set_.size());
+        }
+        else
+        {
+            trans.tbegin();
+            for (auto itr = trans.task_set_.begin(); itr != trans.task_set_.end(); ++itr)
+            {
+                if ((*itr).ope_ == Ope::READ)
+                    trans.tread((*itr).key_);
+                else if ((*itr).ope_ == Ope::WRITE)
+                    trans.twrite((*itr).key_, (*itr).write_val_);
+
+                if (trans.status_ == Status::aborted)
+                {
+                    trans.isearlyaborted = true;
+                    trans.abort();
+                    trans.utils_abort();
+                    goto RETRY;
+                }
             }
         }
         trans.commit();
+
         if (trans.status_ == Status::committed)
-        {
-            myres.local_commit_counts_++;
-            if (trans.task_set_.size() == max_ope_readonly) // SCAN Tx count
-                myres.local_scan_commit_counts_++;
-        }
+            trans.utils_commit();
         else if (trans.status_ == Status::aborted)
         {
             trans.abort();
+            trans.utils_abort();
             goto RETRY;
         }
     }
@@ -307,11 +347,28 @@ void worker(size_t thid, char &ready, const bool &start, const bool &quit)
 
 int main(int argc, char *argv[])
 {
-    auto use_lock = std::getenv("USE_LOCK");
-    if (use_lock)
+    auto mode_str = std::getenv("MODE");
+    if (mode_str)
     {
-        USE_LOCK = atoi(use_lock);
+        std::string mode(mode_str);
+        if (mode == "RC")
+            MODE = Compilemode::RC;
+        else if (mode == "RC_Repair")
+            MODE = Compilemode::RC_Repair;
+        else if (mode == "RCL")
+            MODE = Compilemode::RCL;
+        else if (mode == "RCL_Saferetry")
+            MODE = Compilemode::RCL_Saferetry;
+        else if (mode == "RCL_ELR")
+            MODE = Compilemode::RCL_ELR;
+        else if (mode == "SI")
+            MODE = Compilemode::SI;
+        else if (mode == "SI_Repair")
+            MODE = Compilemode::SI_Repair;
+        else
+            std::cerr << "Invalid mode: " << mode << std::endl;
     }
+
     print_mode();
     makeDB();
     chrono::system_clock::time_point starttime, endtime;
@@ -323,10 +380,7 @@ int main(int argc, char *argv[])
 
     std::vector<std::thread> thv;
     for (size_t i = 0; i < thread_num; ++i)
-    {
-        thv.emplace_back(worker, i, std::ref(readys[i]), std::ref(start),
-                         std::ref(quit));
-    }
+        thv.emplace_back(worker, i, std::ref(readys[i]), std::ref(start), std::ref(quit));
     waitForReady(readys);
 
     starttime = chrono::system_clock::now();
@@ -335,17 +389,14 @@ int main(int argc, char *argv[])
     quit = true;
 
     for (auto &th : thv)
-    {
         th.join();
-    }
+
     endtime = chrono::system_clock::now();
 
     double time = static_cast<double>(chrono::duration_cast<chrono::microseconds>(endtime - starttime).count() / 1000.0);
 
     for (unsigned int i = 0; i < thread_num; ++i)
-    {
         ErmiaResult[0].addLocalAllResult(ErmiaResult[i]);
-    }
     ErmiaResult[0].displayAllResult(time);
 
     // displayDB();

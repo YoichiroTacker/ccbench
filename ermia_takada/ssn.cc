@@ -20,22 +20,26 @@ void Transaction::ssn_tread(Version *ver, uint64_t key)
     if (ver->sstamp_.load(memory_order_acquire) == (UINT32_MAX))
         read_set_.emplace_back(key, ver, ver->val_);
     else
+    {
         this->sstamp_ = min(this->sstamp_, ver->sstamp_.load(memory_order_acquire));
+        read_set_.emplace_back(key, ver);
+    }
     verify_exclusion_or_abort();
 
     // ELR
-    if (this->istargetTx == true && USE_LOCK == 2)
-        ver->pstamp_.store(max(this->cstamp_aborted, ver->pstamp_.load(memory_order_acquire)), memory_order_release);
+    /*if (this->istargetTx == true && USE_LOCK == 2)
+        ver->pstamp_.store(max(this->ex_cstamp_, ver->pstamp_.load(memory_order_acquire)), memory_order_release);*/
 }
 
 void Transaction::ssn_twrite(Version *desired, uint64_t key)
 {
     // Insert my tid for ver->prev_->sstamp_
-    desired->prev_->pstamp_.store(this->txid_, memory_order_release);
-    if (desired->locked_flag_ && USE_LOCK == 1)
+    desired->prev_->sstamp_.store(this->txid_, memory_order_release);
+
+    /*if (desired->locked_flag_ && USE_LOCK == 1)
         this->pstamp_ = max(this->pstamp_, desired->prev_->pstamp_for_rlock_.load(memory_order_acquire));
-    else
-        this->pstamp_ = max(this->pstamp_, desired->prev_->pstamp_.load(memory_order_acquire));
+    else*/
+    this->pstamp_ = max(this->pstamp_, desired->prev_->pstamp_.load(memory_order_acquire));
 
     write_set_.emplace_back(key, desired, &Table[key]);
 
@@ -52,37 +56,44 @@ void Transaction::ssn_twrite(Version *desired, uint64_t key)
 
 void Transaction::ssn_commit()
 {
+    vector<Operation>::iterator itr = validated_read_set_.begin();
+    while (itr != validated_read_set_.end())
+    {
+        if ((*itr).ver_->sstamp_.load(memory_order_acquire) != UINT32_MAX)
+        {
+            this->status_ = Status::aborted;
+            read_set_.push_back(*itr);
+            validated_read_set_.erase(itr);
+        }
+        else
+            ++itr;
+    }
+
+    if (this->status_ == Status::aborted)
+        return;
+
     this->sstamp_ = min(this->sstamp_, this->cstamp_);
-    // if using RCL
-    assert(this->sstamp_ == this->cstamp_);
 
     for (auto itr = read_set_.begin(); itr != read_set_.end(); ++itr)
         this->sstamp_ = min(this->sstamp_, (*itr).ver_->sstamp_.load(memory_order_acquire));
 
     for (auto itr = write_set_.begin(); itr != write_set_.end(); ++itr)
-    {
-        if ((*itr).ver_->locked_flag_ && USE_LOCK == 1)
-            this->pstamp_ = max(this->pstamp_, (*itr).ver_->prev_->pstamp_for_rlock_.load(memory_order_acquire));
-        else
-            this->pstamp_ = max(this->pstamp_, (*itr).ver_->prev_->pstamp_.load(memory_order_acquire));
-    }
+        this->pstamp_ = max(this->pstamp_, (*itr).ver_->prev_->pstamp_.load(memory_order_acquire));
 
     if (pstamp_ < sstamp_)
         this->status_ = Status::committed;
     else
     {
         status_ = Status::aborted;
-        ++res_->local_commitphase_counts_;
+        //++res_->local_commitphase_counts_;
         return;
     }
 
-    for (auto itr = read_set_.begin(); itr != read_set_.end(); ++itr)
-    {
+    for (auto itr = validated_read_set_.begin(); itr != validated_read_set_.end(); ++itr)
         (*itr).ver_->pstamp_.store((max((*itr).ver_->pstamp_.load(memory_order_acquire), this->cstamp_)), memory_order_release);
-        // extention of forced forward edge
-        if (USE_LOCK == 1 && this->istargetTx)
-            (*itr).ver_->pstamp_for_rlock_.store(this->pstamp_);
-    }
+
+    for (auto itr = read_set_.begin(); itr != read_set_.end(); ++itr)
+        (*itr).ver_->pstamp_.store((max((*itr).ver_->pstamp_.load(memory_order_acquire), this->cstamp_)), memory_order_release);
 
     for (auto itr = write_set_.begin(); itr != write_set_.end(); ++itr)
     {

@@ -57,6 +57,17 @@ public:
     void addLocalAllResult(const Result &other);
 };
 
+enum class Compilemode : uint8_t
+{
+    RC,
+    RC_Repair,
+    RCL,
+    RCL_Saferetry,
+    RCL_ELR,
+    SI,
+    SI_Repair,
+};
+
 enum class Status : uint8_t
 {
     inFlight,
@@ -160,7 +171,7 @@ class Tuple
 public:
     uint64_t key;
     std::atomic<Version *> latest_;
-    std::mutex mt_;
+    // std::mutex mt_;
     std::atomic<size_t> rlocked;
     WRLock mmt_;
 
@@ -185,6 +196,7 @@ public:
     Tuple *tuple_; // for lock
     std::array<std::byte, DATA_SIZE> value_;
 
+    Operation(uint64_t key) : key_(key) {}
     Operation(uint64_t key, Version *ver, Tuple *tuple) : key_(key), ver_(ver), tuple_(tuple) {}
     Operation(uint64_t key, Version *ver) : key_(key), ver_(ver) {}
     Operation(uint64_t key, Version *ver, std::array<std::byte, DATA_SIZE> value) : key_(key), ver_(ver), value_(value) {}
@@ -195,7 +207,6 @@ class Task
 public:
     Ope ope_;
     uint64_t key_;
-    // std::array<int, DATA_SIZE> write_val_;
     std::array<std::byte, DATA_SIZE> write_val_;
 
     Task(Ope ope, uint64_t key) : ope_(ope), key_(key) {}
@@ -213,12 +224,17 @@ public:
     Status status_ = Status::inFlight;
     int abortcount_ = 0;
     bool istargetTx = false; // rlockをかけているtransaction
-    uint32_t cstamp_aborted = 0;
+    uint32_t ex_cstamp_ = 0;
 
     vector<Operation> read_set_;  // write set
     vector<Operation> write_set_; // read set
     vector<Task> task_set_;       // 生成されたtransaction
-    vector<int> task_set_sorted_;
+    vector<int> task_set_sorted_; // for rcl+robust safe retry
+
+    // repair
+    vector<Task> retrying_task_set_;
+    vector<Operation> validated_read_set_;
+    bool isearlyaborted = false;
 
     Result *res_;
 
@@ -230,6 +246,8 @@ public:
         write_set_.reserve(max_ope);
         task_set_.reserve(max_ope_readonly);
         task_set_sorted_.reserve(max_ope_readonly);
+        // repair
+        validated_read_set_.reserve(max_ope_readonly);
     }
 
     bool searchReadSet(unsigned int key);
@@ -261,6 +279,16 @@ public:
     static Tuple *get_tuple(uint64_t key);
 
     bool isreadonly();
+
+    void repair_read();
+
+    void ssn_repair_commit();
+
+    void utils_abort();
+
+    void utils_commit();
 };
 
 void print_mode();
+
+void viewtask(vector<Task> &tasks);
