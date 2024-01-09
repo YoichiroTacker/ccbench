@@ -2,6 +2,7 @@
 
 using namespace std;
 enum Compilemode MODE;
+TransactionTable *TMT[thread_num];
 
 void Result::displayAllResult(double time)
 {
@@ -206,6 +207,7 @@ void makeDB()
         Table[i].key = i;
         Version *verTmp = new Version();
         verTmp->status_.store(Status::committed, memory_order_release);
+        verTmp->sstamp_.store(UINT32_MAX & ~(TIDFLAG));
         for (int i = 0; i < DATA_SIZE; i++)
             verTmp->val_[i] = static_cast<std::byte>(0);
         Table[i].latest_.store(verTmp, memory_order_release);
@@ -370,6 +372,12 @@ int main(int argc, char *argv[])
     }
 
     print_mode();
+
+    // TMT = new TransactionTable *[thread_num];
+
+    for (int i = 0; i < thread_num; ++i)
+        TMT[i] = new TransactionTable(0, 0, UINT32_MAX, 0, Status::inFlight);
+
     makeDB();
     chrono::system_clock::time_point starttime, endtime;
 

@@ -22,10 +22,10 @@ include(CMakePackageConfigHelpers)
 include(CompileOptions)
 
 #if you want to execute SI+SSN
-file(GLOB ERMIA_SOURCES "frame.cc" "ssn.cc" "si.cc")
+#file(GLOB ERMIA_SOURCES "frame.cc" "ssn.cc" "si.cc")
 
 #if you want to execute RC+SSN
-#file(GLOB ERMIA_SOURCES "frame.cc" "ssn.cc" "rc.cc")
+file(GLOB ERMIA_SOURCES "frame.cc" "ssn.cc" "rc.cc")
 
 #if you want to execute RCL+SSN
 #file(GLOB ERMIA_SOURCES "frame.cc" "ssn.cc" "rcl.cc")
