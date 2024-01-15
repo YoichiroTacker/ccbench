@@ -31,7 +31,21 @@ void Result::displayAllResult(double time)
     for (auto itr = tmp.begin(); itr != tmp.end(); itr++)
     {
         size_t count = std::count(total_additionalabort.begin(), total_additionalabort.end(), *itr);
-        cout << *itr << " " << count << endl;
+        int validatedsize = 0;
+        int num = 0;
+        // count average validated_size
+        for (auto itr2 = total_validatedset_size_.begin(); itr2 != total_validatedset_size_.end(); itr2++)
+        {
+            if (itr2->second == *itr)
+            {
+                validatedsize += itr2->first;
+                num++;
+            }
+        }
+        if (num == 0)
+            num++;
+
+        cout << *itr << " " << count << " " << validatedsize / num << endl;
     }
 
     //  cout << "latency[ns]:\t\t\t" << powl(10.0, 9.0) / result * thread_num << endl;
@@ -60,6 +74,7 @@ void Result::addLocalAllResult(const Result &other)
     total_wdeadlock_abort_counts_ += other.local_wdeadlock_abort_counts_;
     total_scan_abort_counts_ += other.local_scan_abort_counts_;
     total_scan_commit_counts_ += other.local_scan_commit_counts_;
+    total_validatedset_size_.insert(total_validatedset_size_.end(), other.local_validatedset_size_.begin(), other.local_validatedset_size_.end());
 }
 
 bool isReady(const std::vector<char> &readys)

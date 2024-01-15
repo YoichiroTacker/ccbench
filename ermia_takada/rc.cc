@@ -191,6 +191,8 @@ void Transaction::abort()
         Tuple *tmp = (*itr).tuple_;
         tmp->mmt_.w_unlock();
     }
+    if (MODE == Compilemode::RC && isreadonly() && isearlyaborted == false)
+        res_->local_validatedset_size_.push_back(pair(1, this->abortcount_));
 
     // 提案手法 transaction repair
     if (MODE == Compilemode::RC_Repair && (istargetTx || isreadonly()) && isearlyaborted == false && !read_set_.empty())
@@ -202,12 +204,14 @@ void Transaction::abort()
             retrying_task_set_.clear(); // 2回目以降のabortの場合
         for (auto itr = read_set_.begin(); itr != read_set_.end(); itr++)
         {
-            if (this->pstamp_ < rightshift((*itr).ver_->sstamp_.load(memory_order_acquire)))
+            // if (this->pstamp_ < rightshift((*itr).ver_->sstamp_.load(memory_order_acquire)))
+            if ((*itr).ver_->sstamp_.load(memory_order_acquire) == (UINT32_MAX & ~(TIDFLAG)))
                 validated_read_set_.push_back(*itr);
             else
                 retrying_task_set_.emplace_back(Ope::READ, (*itr).key_);
         }
         assert(validated_read_set_.size() + retrying_task_set_.size() == task_set_.size());
+        res_->local_validatedset_size_.push_back(pair(validated_read_set_.size(), this->abortcount_));
     }
     write_set_.clear();
     read_set_.clear();

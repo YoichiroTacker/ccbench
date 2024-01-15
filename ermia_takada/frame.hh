@@ -52,6 +52,9 @@ public:
     uint64_t local_wdeadlock_abort_counts_ = 0;
     uint64_t total_wdeadlock_abort_counts_ = 0;
 
+    vector<std::pair<int, int>> local_validatedset_size_;
+    vector<std::pair<int, int>> total_validatedset_size_;
+
     void
     displayAllResult(double time);
 
