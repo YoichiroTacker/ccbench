@@ -6,6 +6,7 @@ using namespace std;
 extern std::atomic<uint64_t> timestampcounter;
 extern std::mutex SsnLock;
 extern enum Compilemode MODE;
+extern TransactionTable *TMT[thread_num];
 
 void print_mode()
 {
@@ -18,6 +19,19 @@ void print_mode()
 void Transaction::tbegin()
 {
     this->txid_ = atomic_fetch_add(&timestampcounter, 1);
+
+    // transaction tableに追加
+    TransactionTable *tmt, *newelement;
+    uint32_t ex_cstamp;
+    tmt = __atomic_load_n(&TMT[this->thid_], __ATOMIC_ACQUIRE);
+    if (this->status_ == Status::aborted)
+        ex_cstamp = this->ex_cstamp_;
+    else
+        ex_cstamp = 0;
+
+    newelement = new TransactionTable(this->txid_, 0, UINT32_MAX, ex_cstamp, Status::inFlight);
+    __atomic_store_n(&TMT[thid_], newelement, __ATOMIC_RELEASE);
+
     ssn_tbegin();
 }
 
@@ -28,6 +42,7 @@ void Transaction::tread(uint64_t key)
 
     Tuple *tuple;
     tuple = get_tuple(key);
+
     Version *ver;
     ver = tuple->latest_.load(memory_order_acquire);
     while (ver->status_.load(memory_order_acquire) != Status::committed || txid_ < ver->cstamp_.load(memory_order_acquire))
@@ -56,7 +71,9 @@ void Transaction::twrite(uint64_t key, std::array<std::byte, DATA_SIZE> write_va
     Version *expected, *desired;
     desired = new Version();
     desired->cstamp_.store(this->txid_, memory_order_release);
-    memcpy(desired->val_.data(), write_val.data(), DATA_SIZE);
+    assert(desired->pstamp_.load(memory_order_acquire) == 0);
+    assert(desired->sstamp_.load(memory_order_acquire) == UINT32_MAX);
+    desired->sstamp_.store(UINT32_MAX & ~(TIDFLAG));
 
     Version *vertmp;
     expected = tuple->latest_.load(memory_order_acquire);
@@ -97,6 +114,8 @@ void Transaction::twrite(uint64_t key, std::array<std::byte, DATA_SIZE> write_va
             break;
     }
 
+    memcpy(desired->val_.data(), write_val.data(), DATA_SIZE);
+
     ssn_twrite(desired, key);
 
     if (this->status_ == Status::aborted)
@@ -113,13 +132,16 @@ void Transaction::repair_read()
     vector<Operation>::iterator itr = validated_read_set_.begin();
     while (itr != validated_read_set_.end())
     {
-        if ((*itr).ver_->sstamp_.load(memory_order_acquire) != UINT32_MAX)
+        if ((*itr).ver_->sstamp_.load(memory_order_acquire) != (UINT32_MAX & ~(TIDFLAG)))
         {
             retrying_task_set_.emplace_back(Ope::READ, (*itr).key_);
             validated_read_set_.erase(itr);
         }
         else
+        {
+            upReadersBits((*itr).ver_, this->thid_);
             ++itr;
+        }
     }
     assert(validated_read_set_.size() + retrying_task_set_.size() == task_set_.size());
 
@@ -136,9 +158,14 @@ void Transaction::commit()
 {
     this->cstamp_ = atomic_fetch_add(&timestampcounter, 1);
 
-    SsnLock.lock();
+    TransactionTable *tmt = __atomic_load_n(&TMT[this->thid_], __ATOMIC_ACQUIRE);
+    tmt->status_.store(Status::committing);
+    tmt->cstamp_.store(this->cstamp_, memory_order_release);
 
-    ssn_commit();
+    // SsnLock.lock();
+
+    // ssn_commit();
+    ssn_parallel_commit();
 
     if (this->status_ == Status::committed)
     {
@@ -147,11 +174,11 @@ void Transaction::commit()
             (*itr).ver_->cstamp_.store(this->cstamp_, memory_order_release);
             (*itr).ver_->status_.store(Status::committed, memory_order_release);
         }
-        SsnLock.unlock();
+        // SsnLock.unlock();
     }
     else
     {
-        SsnLock.unlock();
+        // SsnLock.unlock();
         return;
     }
     read_set_.clear();
@@ -165,12 +192,18 @@ void Transaction::commit()
 
 void Transaction::abort()
 {
+    TransactionTable *tmt = __atomic_load_n(&TMT[this->thid_], __ATOMIC_ACQUIRE);
+    tmt->status_.store(Status::aborted, memory_order_release);
+
     ssn_abort();
 
     for (auto itr = write_set_.begin(); itr != write_set_.end(); ++itr)
     {
         (*itr).ver_->status_.store(Status::aborted, memory_order_release);
     }
+
+    if (MODE == Compilemode::RC && isreadonly() && isearlyaborted == false)
+        res_->local_validatedset_size_.push_back(pair(1, this->abortcount_));
 
     // 提案手法 transaction repair
     if (MODE == Compilemode::SI_Repair && (istargetTx || isreadonly()) && isearlyaborted == false && !read_set_.empty())

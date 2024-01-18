@@ -208,7 +208,8 @@ void Transaction::utils_commit()
         ++res_->local_scan_commit_counts_;
     if (abortcount_ != 0)
     {
-        res_->local_additionalabort.push_back(abortcount_);
+        if (this->istargetTx)
+            res_->local_additionalabort.push_back(abortcount_);
         abortcount_ = 0;
     }
 }
