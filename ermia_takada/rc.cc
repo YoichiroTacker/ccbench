@@ -6,6 +6,7 @@ using namespace std;
 extern std::atomic<uint64_t> timestampcounter;
 extern std::mutex SsnLock;
 extern enum Compilemode MODE;
+extern TransactionTable *TMT[thread_num];
 
 void print_mode()
 {
@@ -18,6 +19,19 @@ void print_mode()
 void Transaction::tbegin()
 {
     this->txid_ = atomic_fetch_add(&timestampcounter, 1);
+
+    // transaction tableに追加
+    TransactionTable *tmt, *newelement;
+    uint32_t ex_cstamp;
+    tmt = __atomic_load_n(&TMT[this->thid_], __ATOMIC_ACQUIRE);
+    if (this->status_ == Status::aborted)
+        ex_cstamp = this->ex_cstamp_;
+    else
+        ex_cstamp = 0;
+
+    newelement = new TransactionTable(this->txid_, 0, UINT32_MAX, ex_cstamp, Status::inFlight);
+    __atomic_store_n(&TMT[thid_], newelement, __ATOMIC_RELEASE);
+
     ssn_tbegin();
 }
 
@@ -58,8 +72,9 @@ void Transaction::twrite(uint64_t key, std::array<std::byte, DATA_SIZE> write_va
     Version *expected, *desired;
     desired = new Version();
     desired->cstamp_.store(this->txid_, memory_order_release);
-
-    memcpy(desired->val_.data(), write_val.data(), DATA_SIZE);
+    assert(desired->pstamp_.load(memory_order_acquire) == 0);
+    assert(desired->sstamp_.load(memory_order_acquire) == UINT32_MAX);
+    desired->sstamp_.store(UINT32_MAX & ~(TIDFLAG));
 
     for (;;)
     {
@@ -79,7 +94,12 @@ void Transaction::twrite(uint64_t key, std::array<std::byte, DATA_SIZE> write_va
             break;
     }
 
-    desired->prev_ = expected;
+    memcpy(desired->val_.data(), write_val.data(), DATA_SIZE);
+
+    Version *next_committed = expected;
+    while (next_committed->status_.load(memory_order_acquire) == Status::aborted)
+        next_committed = next_committed->prev_;
+    desired->prev_ = next_committed;
     tuple->latest_ = desired;
 
     ssn_twrite(desired, key);
@@ -98,13 +118,16 @@ void Transaction::repair_read()
     vector<Operation>::iterator itr = validated_read_set_.begin();
     while (itr != validated_read_set_.end())
     {
-        if ((*itr).ver_->sstamp_.load(memory_order_acquire) != UINT32_MAX)
+        if ((*itr).ver_->sstamp_.load(memory_order_acquire) != (UINT32_MAX & ~(TIDFLAG)))
         {
             retrying_task_set_.emplace_back(Ope::READ, (*itr).key_);
             validated_read_set_.erase(itr);
         }
         else
+        {
+            upReadersBits((*itr).ver_, this->thid_);
             ++itr;
+        }
     }
     assert(validated_read_set_.size() + retrying_task_set_.size() == task_set_.size());
 
@@ -121,9 +144,14 @@ void Transaction::commit()
 {
     this->cstamp_ = atomic_fetch_add(&timestampcounter, 1);
 
-    SsnLock.lock();
+    TransactionTable *tmt = __atomic_load_n(&TMT[this->thid_], __ATOMIC_ACQUIRE);
+    tmt->status_.store(Status::committing);
+    tmt->cstamp_.store(this->cstamp_, memory_order_release);
 
-    ssn_commit();
+    // SsnLock.lock();
+
+    // ssn_commit();
+    ssn_parallel_commit();
 
     if (this->status_ == Status::committed)
     {
@@ -134,11 +162,11 @@ void Transaction::commit()
             Tuple *tmp = (*itr).tuple_;
             tmp->mmt_.w_unlock();
         }
-        SsnLock.unlock();
+        // SsnLock.unlock();
     }
     else
     {
-        SsnLock.unlock();
+        // SsnLock.unlock();
         return;
     }
     read_set_.clear();
@@ -152,6 +180,9 @@ void Transaction::commit()
 
 void Transaction::abort()
 {
+    TransactionTable *tmt = __atomic_load_n(&TMT[this->thid_], __ATOMIC_ACQUIRE);
+    tmt->status_.store(Status::aborted, memory_order_release);
+
     ssn_abort();
 
     for (auto itr = write_set_.begin(); itr != write_set_.end(); ++itr)
@@ -160,9 +191,10 @@ void Transaction::abort()
         Tuple *tmp = (*itr).tuple_;
         tmp->mmt_.w_unlock();
     }
+    if (MODE == Compilemode::RC && isreadonly() && isearlyaborted == false)
+        res_->local_validatedset_size_.push_back(pair(1, this->abortcount_));
 
     // 提案手法 transaction repair
-    // if (USE_LOCK == 1 && (istargetTx || isreadonly()) && isearlyaborted == false && !read_set_.empty())
     if (MODE == Compilemode::RC_Repair && (istargetTx || isreadonly()) && isearlyaborted == false && !read_set_.empty())
     {
         this->ex_cstamp_ = this->cstamp_;
@@ -172,12 +204,14 @@ void Transaction::abort()
             retrying_task_set_.clear(); // 2回目以降のabortの場合
         for (auto itr = read_set_.begin(); itr != read_set_.end(); itr++)
         {
-            if (this->pstamp_ < (*itr).ver_->sstamp_.load(memory_order_acquire))
+            // if (this->pstamp_ < rightshift((*itr).ver_->sstamp_.load(memory_order_acquire)))
+            if ((*itr).ver_->sstamp_.load(memory_order_acquire) == (UINT32_MAX & ~(TIDFLAG)))
                 validated_read_set_.push_back(*itr);
             else
                 retrying_task_set_.emplace_back(Ope::READ, (*itr).key_);
         }
         assert(validated_read_set_.size() + retrying_task_set_.size() == task_set_.size());
+        res_->local_validatedset_size_.push_back(pair(validated_read_set_.size(), this->abortcount_));
     }
     write_set_.clear();
     read_set_.clear();

@@ -18,6 +18,7 @@
 #include <cstdint>
 
 #include "../include/zipf.hh"
+#define TIDFLAG 1
 
 using namespace std;
 
@@ -51,6 +52,9 @@ public:
     uint64_t local_wdeadlock_abort_counts_ = 0;
     uint64_t total_wdeadlock_abort_counts_ = 0;
 
+    vector<std::pair<int, int>> local_validatedset_size_;
+    vector<std::pair<int, int>> total_validatedset_size_;
+
     void
     displayAllResult(double time);
 
@@ -73,6 +77,7 @@ enum class Status : uint8_t
     inFlight,
     committed,
     aborted,
+    committing,
 };
 
 class Version
@@ -86,11 +91,16 @@ public:
     std::atomic<Status> status_;
     std::atomic<uint32_t> pstamp_for_rlock_; // 提案手法用, eta
     bool locked_flag_;                       // rlockによって待たされたupdate transaction
+    std::atomic<uint64_t> readers_;          // for pararell commit
 
     Version() { init(); }
 
     void init();
 };
+
+void upReadersBits(Version *ver, uint8_t thid_);
+
+void downReadersBits(Version *ver, uint8_t thid_);
 
 class WRLock
 {
@@ -213,6 +223,36 @@ public:
     Task(Ope ope, uint64_t key, std::array<std::byte, DATA_SIZE> write_val) : ope_(ope), key_(key), write_val_(write_val) {}
 };
 
+class TransactionTable
+{
+public:
+    std::atomic<uint32_t> txid_;
+    std::atomic<uint32_t> cstamp_;
+    std::atomic<uint32_t> sstamp_;
+    std::atomic<uint32_t> ex_cstamp_;
+    std::atomic<Status> status_;
+
+    TransactionTable() {}
+
+    TransactionTable(uint32_t txid, uint32_t cstamp, uint32_t sstamp, uint32_t ex_cstamp, Status status)
+    {
+        this->txid_.store(txid, memory_order_relaxed);
+        this->cstamp_.store(cstamp, memory_order_relaxed);
+        this->sstamp_.store(sstamp, memory_order_relaxed);
+        this->ex_cstamp_.store(ex_cstamp, memory_order_relaxed);
+        this->status_.store(status, memory_order_relaxed);
+    }
+
+    void set(uint32_t txid, uint32_t cstamp, uint32_t sstamp, uint32_t ex_cstamp, Status status)
+    {
+        this->txid_.store(txid, memory_order_relaxed);
+        this->cstamp_.store(cstamp, memory_order_relaxed);
+        this->sstamp_.store(sstamp, memory_order_relaxed);
+        this->ex_cstamp_.store(ex_cstamp, memory_order_relaxed);
+        this->status_.store(status, memory_order_relaxed);
+    }
+};
+
 class Transaction
 {
 public:
@@ -287,8 +327,12 @@ public:
     void utils_abort();
 
     void utils_commit();
+
+    void ssn_parallel_commit();
 };
 
 void print_mode();
 
 void viewtask(vector<Task> &tasks);
+
+uint32_t rightshift(uint32_t tsmp);

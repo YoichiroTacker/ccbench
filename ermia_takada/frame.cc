@@ -2,6 +2,7 @@
 
 using namespace std;
 enum Compilemode MODE;
+TransactionTable *TMT[thread_num];
 
 void Result::displayAllResult(double time)
 {
@@ -30,7 +31,21 @@ void Result::displayAllResult(double time)
     for (auto itr = tmp.begin(); itr != tmp.end(); itr++)
     {
         size_t count = std::count(total_additionalabort.begin(), total_additionalabort.end(), *itr);
-        cout << *itr << " " << count << endl;
+        int validatedsize = 0;
+        int num = 0;
+        // count average validated_size
+        for (auto itr2 = total_validatedset_size_.begin(); itr2 != total_validatedset_size_.end(); itr2++)
+        {
+            if (itr2->second == *itr)
+            {
+                validatedsize += itr2->first;
+                num++;
+            }
+        }
+        if (num == 0)
+            num++;
+
+        cout << *itr << " " << count << " " << validatedsize / num << endl;
     }
 
     //  cout << "latency[ns]:\t\t\t" << powl(10.0, 9.0) / result * thread_num << endl;
@@ -59,6 +74,7 @@ void Result::addLocalAllResult(const Result &other)
     total_wdeadlock_abort_counts_ += other.local_wdeadlock_abort_counts_;
     total_scan_abort_counts_ += other.local_scan_abort_counts_;
     total_scan_commit_counts_ += other.local_scan_commit_counts_;
+    total_validatedset_size_.insert(total_validatedset_size_.end(), other.local_validatedset_size_.begin(), other.local_validatedset_size_.end());
 }
 
 bool isReady(const std::vector<char> &readys)
@@ -192,7 +208,8 @@ void Transaction::utils_commit()
         ++res_->local_scan_commit_counts_;
     if (abortcount_ != 0)
     {
-        res_->local_additionalabort.push_back(abortcount_);
+        if (this->istargetTx)
+            res_->local_additionalabort.push_back(abortcount_);
         abortcount_ = 0;
     }
 }
@@ -206,6 +223,7 @@ void makeDB()
         Table[i].key = i;
         Version *verTmp = new Version();
         verTmp->status_.store(Status::committed, memory_order_release);
+        verTmp->sstamp_.store(UINT32_MAX & ~(TIDFLAG));
         for (int i = 0; i < DATA_SIZE; i++)
             verTmp->val_[i] = static_cast<std::byte>(0);
         Table[i].latest_.store(verTmp, memory_order_release);
@@ -370,6 +388,12 @@ int main(int argc, char *argv[])
     }
 
     print_mode();
+
+    // TMT = new TransactionTable *[thread_num];
+
+    for (int i = 0; i < thread_num; ++i)
+        TMT[i] = new TransactionTable(0, 0, UINT32_MAX, 0, Status::inFlight);
+
     makeDB();
     chrono::system_clock::time_point starttime, endtime;
 
